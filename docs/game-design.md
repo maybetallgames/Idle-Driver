@@ -225,8 +225,9 @@ Rockies near Limon, Denver, Eisenhower Tunnel or Estes Park.
 ### Time scale
 
 The trip is ~2,100 real miles. The game compresses time so the whole trip takes a set number of
-real-world days of idle play. **[OPEN] Q2.** Proposal: about 1 to 2 weeks for a first trip, with L5
-reached in the final stretch (Colorado), so full self driving arrives right as the mountains do.
+real-world days of idle play. **Decided: about 1 week** for the first trip, with L5 reached in the
+final stretch (Colorado), so full self driving arrives right as the mountains do. That works out
+to roughly 300 route miles per real day for a regular player.
 
 ## End of the trip
 
@@ -258,7 +259,7 @@ offline catch-up, local saves). Most of its structure carries over:
 
 1. ~~What does the player do at L0?~~ **Decided:** Dad drives slowly on his own with lots of
    breaks, and you help by tapping takeover prompts. The game is idle from the start.
-2. **How long should the whole trip take in real time?** A few days, 1 to 2 weeks, or a month+?
+2. ~~How long should the whole trip take?~~ **Decided:** about 1 week.
 3. **Start and destination.** Orlando to Rocky Mountain National Park / Estes Park, or somewhere
    else in Florida, or a specific Colorado town?
 4. **After arrival:** stop there, or a prestige loop with new trips?

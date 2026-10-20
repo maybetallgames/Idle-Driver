@@ -92,7 +92,7 @@ not in the prototype.
   elevation for the Rockies, night/day cycle.
 
 ### P6: Polish and balance
-- Tune costs and speeds to the trip-length target (open question 2), tutorial hints, sound,
+- Tune costs and speeds to the 1-week trip target, tutorial hints, sound,
   arrival ending.
 
 ## Risks
