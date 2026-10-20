@@ -2,7 +2,7 @@
 
 An idle game where you control the autopilot of a family SUV on its trip to the mountains.
 
-**Play the latest build:** https://maybetallgames.github.io/idle-driver/
+**Play the latest build:** https://maybetallgames.github.io/Idle-Driver/
 
 ## Development
 

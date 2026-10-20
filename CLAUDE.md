@@ -35,7 +35,7 @@ The SessionStart hook (`.claude/hooks/session-start.sh`) runs `npm install` in c
 
 `.github/workflows/ci.yml` runs typecheck/tests/build on every PR. Pushes to `main` also deploy
 `dist/` to GitHub Pages, which is how the owner plays the latest build on their phone:
-https://maybetallgames.github.io/idle-driver/
+https://maybetallgames.github.io/Idle-Driver/
 
 The footer shows `build <sha>` so the owner can tell which commit they're playing.
 
