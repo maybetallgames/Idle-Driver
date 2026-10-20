@@ -1,7 +1,6 @@
 # Idle Driver: Game Design
 
-Status: draft v0.1. Questions still open for the owner are listed at the end and marked **[OPEN]**
-where they come up.
+Status: draft v0.2. Decisions so far are marked **Decided**; the remaining open question is at the end.
 
 ## Pitch
 
@@ -231,10 +230,11 @@ to roughly 300 route miles per real day for a regular player.
 
 ## End of the trip
 
-**[OPEN] Q4.** Proposal: arriving at the cabin finishes the trip with a summary (miles, peak
-viewers, takeovers). Then a "next vacation" prestige: new route (e.g. to the Grand Canyon or Pacific
-Coast Highway), keep followers as a permanent multiplier, car resets to L0 (a new rental, or the old
-SUV's software gets wiped). This can come after the first trip is fun on its own.
+**Decided:** the game ends when the family arrives. The camera leaves the overhead sensor view and
+rises into a slow, wide shot of the Rocky Mountains at sunset (the full-color world, not the
+sensor outline, for the first time), with the family standing at an overlook in Rocky Mountain
+National Park. The stream's final chat scrolls by, then a short summary: miles driven, days on the
+road, peak viewers, crashes, and the day the car first drove itself. No prestige loop for now.
 
 ## Screen layout (portrait phone)
 
@@ -261,6 +261,6 @@ offline catch-up, local saves). Most of its structure carries over:
    breaks, and you help by tapping takeover prompts. The game is idle from the start.
 2. ~~How long should the whole trip take?~~ **Decided:** about 1 week.
 3. ~~Start and destination?~~ **Decided:** Orlando to Estes Park / Rocky Mountain National Park.
-4. **After arrival:** stop there, or a prestige loop with new trips?
+4. ~~After arrival?~~ **Decided:** the game ends with a pretty view of the mountains.
 5. **The family:** named characters with personalities (the parent driver, kids who cause events),
    or kept abstract? Should we show a fake stream chat on screen?
