@@ -21,7 +21,8 @@ the stream runs on its own.
    state lines and landmarks show up at their real distances, and the scenery changes from palms to
    pines to plains to peaks.
 3. **The family is the content.** The stream is the economy. Things that happen on the road
-   (a dinosaur roadside attraction, a thunderstorm, a kid getting carsick) bring in viewers.
+   (a dinosaur roadside attraction, a thunderstorm, a kid getting carsick, a spectacular crash)
+   bring in viewers.
 4. **Idle first, phone first.** The car keeps driving while you are away, more and more as autonomy
    improves. Everything works in a phone browser in portrait.
 
@@ -73,6 +74,39 @@ it resolves the situation (a small, satisfying action rather than real steering)
   stops early. Higher autonomy means fewer takeovers, which is why autonomy is the idle multiplier.
 - Takeovers are also stream content: near-misses and "the car figured it out" moments spike viewers.
 
+### Dad's tiredness and crashes
+
+Dad has a **tiredness meter**. It rises the longer he drives and faster at night, in heavy traffic
+and in bad weather. Breaks, gas stops, coffee and the kids being quiet bring it down. The tireder
+he is, the slower he reacts and the more likely a takeover goes wrong.
+
+When a tricky moment hits and Dad is too tired (or a takeover prompt goes untapped), the car
+**crashes**, and crashes are a spectacle on purpose:
+
+- **Over the top, cartoon physics.** The SUV flips, barrel-rolls and bounces far more than a real
+  car would. The camera drops into slow motion and orbits the wreck.
+- **The family tumbles around inside.** The roof and windows go see-through during the crash so you
+  can watch Dad, Mom, the kids, the dog, snacks and luggage ragdoll around the cabin. Then the
+  car lands, everyone sits up dazed with cartoon stars, and the trip goes on. Nobody gets hurt;
+  the tone stays slapstick, like a family-vacation comedy.
+- **Crash types** keyed to the situation and region: rear-ending a truck, spinning out in rain,
+  sliding off a snowy switchback, a deer, a hay bale off a Kansas truck, a gator on a Florida road.
+
+**Cost and reward.** A crash costs repair money and time (the car is towed to the next town), but
+crash clips go viral: viewers spike hard and followers jump. That makes crashes a real risk/reward
+lever instead of a pure punishment, so players can choose to push a tired Dad a little further.
+Repair costs are tuned so that crashing on purpose doesn't pay off long term.
+
+**How autonomy changes it.** Each autonomy level takes more of the driving away from Dad, so he
+gets less tired and crashes get rarer. Some features prevent specific crashes (automatic emergency
+braking stops rear-endings, lane keeping stops drifting off the road, night vision stops deer
+hits). At L5 Dad sleeps in the back and the car never crashes on its own, which makes the last
+crash of the trip a memorable moment. Upgrades like a driver-attention monitor (beeps when Dad
+nods off) and a better seat also slow his tiredness.
+
+**Offline.** While you are away, a crash stops the car until you return (the tow truck waits), and
+the return screen offers a replay of it.
+
 ## Sensors and what the car sees
 
 The overhead view only shows what the car has perceived. Beyond sensor range the world fades to
@@ -97,6 +131,8 @@ buy. A sensor's first purchase is the big unlock; later levels widen the visible
 
 Features are the software side. Each needs certain sensors and unlocks part of an autonomy level.
 
+- **Automatic emergency braking** (front camera or radar): prevents rear-end crashes.
+- **Driver attention monitor** (cabin camera): warns when Dad nods off; slows his tiredness.
 - **Adaptive cruise control** (radar): steady speed, fewer slow-downs. Part of L1.
 - **Lane keeping** (front camera): holds the lane. Part of L1.
 - **Autosteer** (cruise + lane keeping + compute): both at once. Unlocks L2.
