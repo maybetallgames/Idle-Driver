@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1d2b3a" />
+    <title>Idle Driver</title>
+  </head>
+  <body>
+    <main id="app">
+      <header>
+        <h1>Idle Driver</h1>
+        <p class="sub">You are the autopilot. Get the family to the mountains.</p>
+      </header>
+
+      <canvas id="road" width="360" height="160" aria-label="The family SUV on the road"></canvas>
+
+      <section class="stats">
+        <div><span class="label">Miles to spend</span><span id="miles" class="value">0</span></div>
+        <div><span class="label">Speed</span><span id="speed" class="value">0</span><span class="unit">mi/s</span></div>
+      </section>
+
+      <section class="trip">
+        <div class="bar"><div id="progress"></div></div>
+        <p id="landmark"></p>
+        <p id="next" class="muted"></p>
+      </section>
+
+      <button id="honk" class="honk">Honk the horn 📯</button>
+
+      <section id="upgrades" class="upgrades"></section>
+
+      <footer>
+        <span id="build" class="muted"></span>
+        <button id="reset" class="link">Reset trip</button>
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

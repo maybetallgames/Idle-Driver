@@ -1,0 +1,51 @@
+:root {
+  --bg: #1d2b3a;
+  --panel: #26384b;
+  --text: #f2f5f8;
+  --muted: #9fb2c4;
+  --accent: #f4b942;
+  --good: #5cc98b;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100dvh; background: var(--bg); }
+#app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+h1 { margin: 0; font-size: 1.6rem; }
+.sub, .muted { color: var(--muted); margin: 0; font-size: 0.9rem; }
+canvas { width: 100%; height: auto; border-radius: 12px; background: #87c5ea; display: block; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stats > div { background: var(--panel); border-radius: 10px; padding: 10px 12px; }
+.label { display: block; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.value { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.unit { color: var(--muted); margin-left: 4px; font-size: 0.85rem; }
+.trip p { margin: 6px 0 0; }
+.bar { height: 10px; background: var(--panel); border-radius: 5px; overflow: hidden; }
+#progress { height: 100%; width: 0; background: var(--good); transition: width 0.3s; }
+button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+.honk {
+  background: var(--accent); color: #1d2b3a; border: 0; border-radius: 12px;
+  padding: 16px; font-size: 1.1rem; font-weight: 700;
+}
+.honk:active { transform: scale(0.97); }
+.upgrades { display: flex; flex-direction: column; gap: 8px; }
+.upgrade {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  background: var(--panel); border: 2px solid transparent; border-radius: 10px;
+  padding: 12px; text-align: left; width: 100%;
+}
+.upgrade:disabled { opacity: 0.5; cursor: default; }
+.upgrade:not(:disabled) { border-color: var(--good); }
+.upgrade .name { font-weight: 700; }
+.upgrade .desc { color: var(--muted); font-size: 0.85rem; }
+.upgrade .cost { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+footer { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.link { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 8px 0; }
