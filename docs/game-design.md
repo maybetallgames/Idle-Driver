@@ -190,12 +190,12 @@ the car stopped if it did ("Stopped at a construction zone near Chattanooga, nee
 
 ## The route
 
-**[OPEN] Q3** for exact start and destination. Working proposal, about 2,100 miles:
+**Decided:** Orlando, FL to Estes Park and Rocky Mountain National Park, CO. About 2,100 miles:
 
 Orlando, FL → I-75 north → Atlanta, GA → I-75 / I-24 → Chattanooga → Nashville, TN → I-24 / I-64
 → St. Louis, MO (Gateway Arch) → I-70 west → Kansas City → across Kansas (long, flat, boring on
-purpose) → Denver, CO → into the mountains (I-70 to the Eisenhower Tunnel, or US-36 to Estes Park
-and Rocky Mountain National Park).
+purpose) → Denver, CO → US-36 up through Boulder and Lyons to Estes Park, finishing at Rocky Mountain
+National Park.
 
 Why this route: a clean north-then-west shape, big recognizable cities, a real "boring flat
 middle" that the stream economy can play off, and a dramatic finish where the Rockies rise out of
@@ -220,7 +220,7 @@ the plains.
 Landmarks sit at their real distance along the route and act as the milestones the current build
 already has. Examples: Disney/Orlando start, Florida/Georgia line, Atlanta, Lookout Mountain,
 Nashville, the Gateway Arch, Kansas City, the "geographic center" in Kansas, the first view of the
-Rockies near Limon, Denver, Eisenhower Tunnel or Estes Park.
+Rockies near Limon, Denver, Boulder's Flatirons, Estes Park, and the park entrance.
 
 ### Time scale
 
@@ -260,8 +260,7 @@ offline catch-up, local saves). Most of its structure carries over:
 1. ~~What does the player do at L0?~~ **Decided:** Dad drives slowly on his own with lots of
    breaks, and you help by tapping takeover prompts. The game is idle from the start.
 2. ~~How long should the whole trip take?~~ **Decided:** about 1 week.
-3. **Start and destination.** Orlando to Rocky Mountain National Park / Estes Park, or somewhere
-   else in Florida, or a specific Colorado town?
+3. ~~Start and destination?~~ **Decided:** Orlando to Estes Park / Rocky Mountain National Park.
 4. **After arrival:** stop there, or a prestige loop with new trips?
 5. **The family:** named characters with personalities (the parent driver, kids who cause events),
    or kept abstract? Should we show a fake stream chat on screen?
