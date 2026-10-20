@@ -52,7 +52,7 @@ them and they map cleanly to idle-game "how much does this run without me" tiers
 
 | Level | Name in game | What it means for play | Offline driving |
 |---|---|---|---|
-| L0 | Dad drives | A parent drives. Slow, takes frequent breaks, the car only makes good progress while you are actively playing. **[OPEN] see Q1** | Very little (parent stops for the night) |
+| L0 | Dad drives | Dad drives on his own: slow, lots of breaks. You help by tapping takeover prompts at tricky spots. Idle from minute one. (Decided.) | Very little (Dad stops for the night) |
 | L1 | Driver assist | Adaptive cruise *or* lane keeping. Steadier speed, fewer breaks. | A few hours |
 | L2 | Partial autopilot | Cruise + lane keeping together on highways. Lane lines turn blue on screen. | Longer, but stops at hard situations |
 | L3 | Highway pilot | Handles highways fully, including lane changes and merges. Asks for help at interchanges, construction, cities. | Most highway time |
@@ -220,10 +220,8 @@ offline catch-up, local saves). Most of its structure carries over:
 
 ## Open questions for the owner
 
-1. **What does the player do at L0?** Options: (a) a parent drives on their own, slowly and with
-   lots of breaks, and you help by tapping takeovers; or (b) the car only moves while you actively
-   hold or tap, and autonomy is what lets it move without you. (a) is gentler and more idle; (b)
-   makes the first upgrades feel huge.
+1. ~~What does the player do at L0?~~ **Decided:** Dad drives slowly on his own with lots of
+   breaks, and you help by tapping takeover prompts. The game is idle from the start.
 2. **How long should the whole trip take in real time?** A few days, 1 to 2 weeks, or a month+?
 3. **Start and destination.** Orlando to Rocky Mountain National Park / Estes Park, or somewhere
    else in Florida, or a specific Colorado town?
