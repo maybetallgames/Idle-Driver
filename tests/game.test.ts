@@ -20,23 +20,23 @@ describe('driving', () => {
 describe('upgrades', () => {
   it('cannot buy without enough miles', () => {
     const s = newGame(0);
-    expect(canBuy(s, 'cruise')).toBe(false);
-    expect(buy(s, 'cruise')).toBe(s);
+    expect(canBuy(s, 'camera')).toBe(false);
+    expect(buy(s, 'camera')).toBe(s);
   });
 
   it('buying spends miles, raises level, raises speed and next cost', () => {
     const s = { ...newGame(0), miles: 100 };
-    const before = upgradeCost(s, 'cruise');
-    const after = buy(s, 'cruise');
+    const before = upgradeCost(s, 'camera');
+    const after = buy(s, 'camera');
     expect(after.miles).toBe(100 - before);
-    expect(level(after, 'cruise')).toBe(1);
+    expect(level(after, 'camera')).toBe(1);
     expect(speed(after)).toBeGreaterThan(speed(s));
-    expect(upgradeCost(after, 'cruise')).toBeGreaterThan(before);
+    expect(upgradeCost(after, 'camera')).toBeGreaterThan(before);
     expect(after.odometer).toBe(s.odometer); // spending doesn't move you backwards
   });
 
   it('multiplier upgrades scale flat speed', () => {
-    const s = { ...newGame(0), levels: { tires: 1, snacks: 2 } };
+    const s = { ...newGame(0), levels: { radar: 1, snacks: 2 } };
     expect(speed(s)).toBeCloseTo((0.2 + 3) * 1.2);
   });
 });
@@ -71,8 +71,17 @@ describe('trip', () => {
 
 describe('saves', () => {
   it('round-trips', () => {
-    const s = { ...newGame(5), miles: 42, odometer: 99, levels: { cruise: 3 } };
+    const s = { ...newGame(5), miles: 42, odometer: 99, levels: { camera: 3 } };
     expect(deserialize(serialize(s), 0)).toEqual(s);
+  });
+
+  it('loads version 1 saves, moving old upgrades to the sensors that replaced them', () => {
+    const old = JSON.stringify({ version: 1, odometer: 500, miles: 20, levels: { cruise: 4, tires: 2, snacks: 1, lane: 3 }, lastTick: 9 });
+    const s = deserialize(old, 0);
+    expect(s.version).toBe(2);
+    expect(s.levels).toEqual({ camera: 4, radar: 2, snacks: 1, sidecams: 3 });
+    expect(s.odometer).toBe(500);
+    expect(speed(s)).toBeCloseTo((0.2 + 0.5 * 4 + 3 * 2 + 20 * 3) * 1.1);
   });
 
   it('falls back to a new game on bad data', () => {

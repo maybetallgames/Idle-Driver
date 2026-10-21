@@ -5,6 +5,7 @@ import {
   type GameState,
 } from './game';
 import { createMapView } from './scene/mapScene';
+import { sensorCones } from './perception';
 
 const SAVE_KEY = 'idle-driver-save';
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -73,7 +74,7 @@ function frame(t: number) {
   const dt = Math.min((t - last) / 1000, 1);
   last = t;
   state = { ...advance(state, dt), lastTick: Date.now() };
-  roadScene.frame(Math.min(dt, 0.1), speed(state), tripProgress(state));
+  roadScene.frame(Math.min(dt, 0.1), speed(state), tripProgress(state), sensorCones(state.levels));
   render();
   if (t - lastSave > 5000) { save(); lastSave = t; }
   requestAnimationFrame(frame);

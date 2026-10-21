@@ -1,11 +1,13 @@
 // The 3D view on the real map: loads baked chunks around the car, drives the SUV along the real
 // route with traffic, and follows it with the camera. Reads game numbers; owns no game rules.
 import {
-  Color, DirectionalLight, Fog, HemisphereLight, InstancedMesh, Object3D, PerspectiveCamera, Scene,
-  Vector3, WebGLRenderer,
+  BoxGeometry, Color, DirectionalLight, Fog, HemisphereLight, InstancedMesh, MeshBasicMaterial, Object3D,
+  PerspectiveCamera, Scene, Vector3, WebGLRenderer,
 } from 'three';
 import { chunkIndex, expandLanes, laneOffset, poseAt, type MapChunk, type RouteIndex, type RoutePose } from '../map/chunk';
 import { initTraffic, rng, stepTraffic, type TrafficCar } from '../world';
+import { perceives, type Cone } from '../perception';
+import { sensorUniforms, setCones, withSensorView } from './sensorShader';
 import { flat, makeSuv, trafficGeometries } from './models';
 import { buildChunk, type ChunkMeshes } from './mapMeshes';
 
@@ -15,8 +17,11 @@ const CAR_COLORS = [0xd9d9d9, 0x9aa5b1, 0x3d5a80, 0xe76f51, 0xf4f1de, 0x6d597a, 
 const SNAP_GAP = 3000;
 
 export interface MapView {
-  /** Advance and draw one frame. `progress` is 0..1 along the trip, `idleSpeed` in miles/sec. */
-  frame(dt: number, idleSpeed: number, progress: number): void;
+  /**
+   * Advance and draw one frame. `progress` is 0..1 along the trip, `idleSpeed` in miles/sec,
+   * `cones` what the car's sensors cover.
+   */
+  frame(dt: number, idleSpeed: number, progress: number, cones: readonly Cone[]): void;
   /** Where we are, for the HUD (undefined until the map index has loaded). */
   place(): { s: number; total: number; prev: string; next?: { name: string; s: number } } | undefined;
 }
@@ -40,9 +45,10 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
   container.appendChild(status);
 
   const scene = new Scene();
-  const sky = new Color(0xa9d6f2);
+  // Beyond its sensors the car's screen fades to a dark night-blue.
+  const sky = new Color(0x16202c);
   scene.background = sky;
-  scene.fog = new Fog(sky, 450, 1500);
+  scene.fog = new Fog(sky, 300, 1300);
   const camera = new PerspectiveCamera(55, 1, 1, 2500);
   scene.add(new HemisphereLight(0xffffff, 0x8a7f6a, 2.0));
   const sun = new DirectionalLight(0xfff2d6, 2.0);
@@ -53,10 +59,14 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
   suv.rotation.order = 'YXZ';
   scene.add(suv);
   const tg = trafficGeometries();
-  const bodies = new InstancedMesh(tg.body, flat(0xffffff), TRAFFIC_COUNT);
-  const cabins = new InstancedMesh(tg.cabin, flat(0x1b2a38), TRAFFIC_COUNT);
-  bodies.frustumCulled = cabins.frustumCulled = false;
-  scene.add(bodies, cabins);
+  const bodies = new InstancedMesh(tg.body, withSensorView(flat(0xffffff)), TRAFFIC_COUNT);
+  const cabins = new InstancedMesh(tg.cabin, withSensorView(flat(0x1b2a38)), TRAFFIC_COUNT);
+  // Cars the sensors have detected get a glowing box, like a self-driving car's screen.
+  const boxGeo = new BoxGeometry(2.3, 2.0, 5.0);
+  boxGeo.translate(0, 1.0, 0);
+  const boxes = new InstancedMesh(boxGeo, new MeshBasicMaterial({ color: 0x5fd4ff, transparent: true, opacity: 0.28, depthWrite: false }), TRAFFIC_COUNT);
+  bodies.frustumCulled = cabins.frustumCulled = boxes.frustumCulled = false;
+  scene.add(bodies, cabins, boxes);
 
   const base = new URL('map/', document.baseURI).href;
   let index: RouteIndex | undefined;
@@ -141,7 +151,8 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
   const tint = new Color();
   const v = new Vector3(), ahead = new Vector3();
 
-  function frame(dt: number, _idleSpeed: number, progress: number) {
+  function frame(dt: number, _idleSpeed: number, progress: number, cones: readonly Cone[]) {
+    setCones(cones);
     if (!index) { renderer.render(scene, camera); return; }
     const target = opts.mile !== undefined ? opts.mile * 1609.344 : progress * index.total;
     const ci = chunkIndex(index, shownS ?? target);
@@ -177,6 +188,8 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
     toScene(p, lateral, suv.position);
     suv.rotation.set(Math.atan(p.grade), Math.atan2(-p.dx, p.dy), 0);
     suv.position.y += Math.sin(performance.now() / 110) * 0.02;
+    sensorUniforms.uSensorCar.value.copy(suv.position);
+    sensorUniforms.uSensorFwd.value.set(p.dx, -p.dy).normalize();
 
     // Traffic, in lanes of our direction.
     const road = { lanes: p.fwd, playerLane: p.fwd - 1 };
@@ -185,18 +198,23 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
     stepTraffic(traffic, Math.min(dt, 0.1), vs, r, road);
     traffic.forEach((c, i) => {
       const cp = pose(shownS! - c.z);
+      let seen = false;
       if (!cp) { dummy.scale.setScalar(0); }
       else {
-        toScene(cp, laneOffset(cp.fwd, cp.back, Math.min(c.x, cp.fwd - 1)), dummy.position);
+        const off = laneOffset(cp.fwd, cp.back, Math.min(c.x, cp.fwd - 1));
+        seen = perceives(cones, -c.z, off - lateral);
+        toScene(cp, off, dummy.position);
         dummy.rotation.set(Math.atan(cp.grade), Math.atan2(-cp.dx, cp.dy) + (c.lane - c.x) * 0.15, 0);
         dummy.scale.setScalar(1);
       }
       dummy.updateMatrix();
       bodies.setMatrixAt(i, dummy.matrix);
       cabins.setMatrixAt(i, dummy.matrix);
+      if (!seen) { dummy.scale.setScalar(0); dummy.updateMatrix(); }
+      boxes.setMatrixAt(i, dummy.matrix);
       bodies.setColorAt(i, tint.setHex(CAR_COLORS[c.color % CAR_COLORS.length]));
     });
-    bodies.instanceMatrix.needsUpdate = cabins.instanceMatrix.needsUpdate = true;
+    bodies.instanceMatrix.needsUpdate = cabins.instanceMatrix.needsUpdate = boxes.instanceMatrix.needsUpdate = true;
     if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
 
     // Chase camera: behind and above, looking a little ahead along the road.
