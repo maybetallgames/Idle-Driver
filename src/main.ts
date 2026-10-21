@@ -4,7 +4,7 @@ import {
   honk, level, newGame, nextLandmark, serialize, speed, tripProgress, upgradeCost,
   type GameState,
 } from './game';
-import { drawRoad } from './road';
+import { createRoadScene } from './scene/scene';
 
 const SAVE_KEY = 'idle-driver-save';
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -21,8 +21,9 @@ function save() {
 
 let { state, seconds: offline } = catchUp(load(), Date.now());
 
-const canvas = $<HTMLCanvasElement>('road');
-const ctx = canvas.getContext('2d')!;
+// ?seed=123 fixes the scenery and traffic, so screenshots are reproducible.
+const seedParam = Number(new URLSearchParams(location.search).get('seed'));
+const roadScene = createRoadScene($('view'), seedParam || Math.floor(Math.random() * 1e9));
 const upgradesEl = $('upgrades');
 
 // Build upgrade buttons once; update text each frame.
@@ -63,7 +64,7 @@ function frame(t: number) {
   const dt = Math.min((t - last) / 1000, 1);
   last = t;
   state = { ...advance(state, dt), lastTick: Date.now() };
-  drawRoad(ctx, canvas, t, speed(state), tripProgress(state));
+  roadScene.frame(Math.min(dt, 0.1), speed(state), tripProgress(state));
   render();
   if (t - lastSave > 5000) { save(); lastSave = t; }
   requestAnimationFrame(frame);

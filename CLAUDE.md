@@ -14,7 +14,9 @@ and the result must be playable in a mobile browser.
   Put new mechanics here and unit test them in `tests/`.
 - `src/main.ts`: DOM wiring, game loop (`requestAnimationFrame`), save/load to `localStorage`,
   offline catch-up.
-- `src/road.ts`: canvas drawing of the road scene.
+- `src/world.ts`: pure helpers for the 3D scene (road scrolling/recycling, traffic lane logic, seeded RNG).
+- `src/scene/`: Three.js rendering (`scene.ts` builds and draws the road, `models.ts` has the
+  low-poly models). It reads game state and owns no rules. `?seed=N` in the URL fixes the scenery.
 - `src/style.css`: mobile-first styles (design for a ~390px wide phone first).
 
 ## Commands

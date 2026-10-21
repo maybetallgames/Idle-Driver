@@ -13,9 +13,9 @@ try {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  await page.goto(url);
+  await page.goto(`${url}?seed=1`); // fixed scenery so screenshots are comparable
   for (let i = 0; i < 15; i++) await page.click('#honk');
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(2000); // let the 3D view render a few frames (software WebGL is slow)
   await page.screenshot({ path: out, fullPage: true });
   console.log(`Saved ${out}. miles=${await page.textContent('#miles')} speed=${await page.textContent('#speed')}`);
   if (errors.length) {
