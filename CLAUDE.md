@@ -14,9 +14,16 @@ and the result must be playable in a mobile browser.
   Put new mechanics here and unit test them in `tests/`.
 - `src/main.ts`: DOM wiring, game loop (`requestAnimationFrame`), save/load to `localStorage`,
   offline catch-up.
-- `src/world.ts`: pure helpers for the 3D scene (road scrolling/recycling, traffic lane logic, seeded RNG).
-- `src/scene/`: Three.js rendering (`scene.ts` builds and draws the road, `models.ts` has the
-  low-poly models). It reads game state and owns no rules. `?seed=N` in the URL fixes the scenery.
+- `src/world.ts`: pure traffic lane logic and a seeded RNG.
+- `src/map/`: pure map helpers. `geo.ts` (projection, resampling, lane/building rules; also used by
+  the bake script) and `chunk.ts` (baked chunk format, position/heading along the route).
+- `src/scene/`: Three.js rendering. `mapScene.ts` loads chunks around the car and drives the SUV,
+  traffic and camera; `mapMeshes.ts` builds terrain/roads/buildings/trees for a chunk; `models.ts`
+  has the low-poly cars. Rendering reads game state and owns no rules.
+  URL options: `?seed=N` fixes traffic, `?mile=N` shows that spot on the route.
+- `scripts/bake-map.ts` + `public/map/`: the real-world map, pre-baked (see
+  `docs/prototype-plan.md`). Re-run with `NODE_USE_ENV_PROXY=1 node scripts/bake-map.ts`
+  (Node's fetch needs that flag to use the cloud proxy); `--chunks 0-5` bakes a range.
 - `src/style.css`: mobile-first styles (design for a ~390px wide phone first).
 
 ## Commands
@@ -25,8 +32,8 @@ The SessionStart hook (`.claude/hooks/session-start.sh`) runs `npm install` in c
 
 - `npm run check`: typecheck + tests + production build. **Run before every commit.**
 - `npm test`: unit tests only.
-- `npm run screenshot [-- out.png]`: builds, serves, and saves a 390x844 phone screenshot
-  (default `screenshot.png`, gitignored). Use it to visually verify UI changes, then read the
+- `npm run screenshot [-- out.png] [--mile N]`: builds, serves, and saves a 390x844 phone screenshot
+  (default `screenshot.png`, gitignored), optionally at mile N of the route. Use it to visually verify UI changes, then read the
   image. It exits non-zero if the page logs errors.
 - `npm run dev`: dev server (not usually useful in the cloud since the owner can't open it).
 
