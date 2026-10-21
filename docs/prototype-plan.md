@@ -25,32 +25,32 @@ Builds on the setup PR (TypeScript + Vite + Vitest, CI, Pages deploy, `npm run s
   works there through SwiftShader (software rendering), so screenshots of the 3D view are possible.
   We add a `?seed=` / `?state=` URL option so a screenshot can show a fixed scene.
 
-## Real-world route data on a static site
+## Real-world map on a static site
+
+**Decided (owner):** the game uses real road data on a real map, with real buildings, trees and
+terrain heights. This moved up to right after P1.
 
 GitHub Pages can't run a server, and calling map APIs live from players' phones would hit rate
-limits and keys. So the route is **pre-baked into the repo**:
+limits and keys. So the map is **pre-baked into the repo** by `scripts/bake-map.ts`
+(`NODE_USE_ENV_PROXY=1 node scripts/bake-map.ts` in the cloud; downloads are cached in `.cache/`):
 
-1. A one-off script `scripts/bake-route.mjs` requests the driving route once from an OpenStreetMap
-   router (the public OSRM demo server, or Valhalla, within their usage policy) for the chosen
-   waypoints: Orlando → Atlanta → Nashville → St. Louis → Kansas City → Denver → destination.
-2. It simplifies the line to roughly one point every 0.5 to 1 mile (a few thousand points), and
-   tags each stretch with data looked up once from OpenStreetMap (via Overpass): highway number,
-   number of lanes, speed limit, urban vs rural, state.
-3. It adds an elevation profile from free public elevation data (for the climb into the Rockies)
-   and the landmark list at real distances.
-4. Output: `src/data/route.json` (target under ~200 KB gzipped), committed to the repo with the
-   OpenStreetMap attribution (© OpenStreetMap contributors, ODbL) shown in the game's credits.
+1. **Route**: Orlando → Atlanta → Chattanooga → Nashville → St. Louis → Kansas City → Denver →
+   Boulder → Lyons → Estes Park → Rocky Mountain National Park, from the public OSRM server
+   (OpenStreetMap data). About 1,920 miles, resampled every 20 m.
+2. **Corridor strip** about 3 km wide along the route, cut into 4 km chunks
+   (`public/map/c/NNNN.json`, ~770 files):
+   - Terrain heights from AWS Terrain Tiles (Terrarium, USGS 3DEP / SRTM), sampled on a grid that
+     follows the road (dense near the road, sparse at the edges).
+   - Land cover (forest, water, farms, towns) from the USGS National Land Cover Database 2021.
+     The game scatters low-poly trees inside real forests and yards.
+   - Buildings (footprints + height, estimated where OSM has none) and nearby roads from
+     OpenStreetMap via OpenFreeMap vector tiles.
+   - Lane counts along the route from OpenStreetMap (Overpass), with defaults by road class.
+3. `public/map/route.json`: chunk index, city waypoints with distances, a light overview line.
 
-At runtime the game just reads that file: position along the route (miles) → which stretch, which
-biome, how many lanes, the speed limit, nearby landmark, state for gas prices. No network calls.
-
-**How real does the 3D view need to be?** At car scale (a few hundred feet around the SUV) real
-interstates are mostly straight. The plan is to drive the local scene from the real data (lane
-count, curves and hills from the real line and elevation, city vs countryside, biome, real
-landmarks as set pieces) and generate the small stuff (trees, signs, traffic) procedurally per
-biome. The real geography shows up on the route strip/minimap as a drawn line of the US.
-A full map tile layer under the car (like Google Maps) is possible later but much heavier, so it's
-not in the prototype.
+At runtime the game fetches the chunks around the car from the same site (no third-party calls),
+builds meshes, and drops chunks it has passed. Credits (OSM/ODbL, OpenFreeMap, AWS/USGS, NLCD) are
+shown in the footer.
 
 ## Milestones
 
@@ -86,10 +86,13 @@ not in the prototype.
 - New save version with migration from the current save format (old saves must still load).
 - Offline summary screen.
 
-### P5: The real route
-- `bake-route` script and committed `route.json`.
-- Route strip / minimap, real landmarks and cities, biomes switch by region, state gas prices,
-  elevation for the Rockies, night/day cycle.
+### P1b: The real map (done early, owner request)
+- `bake-map` script and committed map chunks; the car drives the real route over real terrain,
+  past real buildings, forests and roads.
+
+### P5: Route features
+- Route strip / minimap, real landmarks and cities in the HUD, game distances tuned to the real
+  1,920 miles, state gas prices, night/day cycle.
 
 ### P6: Polish and balance
 - Tune costs and speeds to the 1-week trip target, tutorial hints, sound,

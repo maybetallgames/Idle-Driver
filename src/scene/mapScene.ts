@@ -1,0 +1,229 @@
+// The 3D view on the real map: loads baked chunks around the car, drives the SUV along the real
+// route with traffic, and follows it with the camera. Reads game numbers; owns no game rules.
+import {
+  Color, DirectionalLight, Fog, HemisphereLight, InstancedMesh, Object3D, PerspectiveCamera, Scene,
+  Vector3, WebGLRenderer,
+} from 'three';
+import { chunkIndex, expandLanes, laneOffset, poseAt, type MapChunk, type RouteIndex, type RoutePose } from '../map/chunk';
+import { initTraffic, rng, stepTraffic, type TrafficCar } from '../world';
+import { flat, makeSuv, trafficGeometries } from './models';
+import { buildChunk, type ChunkMeshes } from './mapMeshes';
+
+const TRAFFIC_COUNT = 10;
+const CAR_COLORS = [0xd9d9d9, 0x9aa5b1, 0x3d5a80, 0xe76f51, 0xf4f1de, 0x6d597a, 0x283618, 0xbc4749, 0x1d1d1d];
+/** Beyond this gap between where the game says we are and where the car is drawn, jump instead of driving. */
+const SNAP_GAP = 3000;
+
+export interface MapView {
+  /** Advance and draw one frame. `progress` is 0..1 along the trip, `idleSpeed` in miles/sec. */
+  frame(dt: number, idleSpeed: number, progress: number): void;
+  /** Where we are, for the HUD (undefined until the map index has loaded). */
+  place(): { s: number; total: number; prev: string; next?: { name: string; s: number } } | undefined;
+}
+
+interface Loaded { data: MapChunk; meshes: ChunkMeshes; lanes: [number, number][] }
+
+export function createMapView(container: HTMLElement, opts: { seed: number; mile?: number }): MapView {
+  let renderer: WebGLRenderer;
+  try {
+    renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  } catch {
+    container.classList.add('no-webgl');
+    container.textContent = 'This browser can\'t show the 3D view (WebGL is off).';
+    return { frame: () => {}, place: () => undefined };
+  }
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  container.appendChild(renderer.domElement);
+  const status = document.createElement('div');
+  status.className = 'view-status';
+  status.textContent = 'Loading the map…';
+  container.appendChild(status);
+
+  const scene = new Scene();
+  const sky = new Color(0xa9d6f2);
+  scene.background = sky;
+  scene.fog = new Fog(sky, 450, 1500);
+  const camera = new PerspectiveCamera(55, 1, 1, 2500);
+  scene.add(new HemisphereLight(0xffffff, 0x8a7f6a, 2.0));
+  const sun = new DirectionalLight(0xfff2d6, 2.0);
+  sun.position.set(-0.5, 1, 0.35);
+  scene.add(sun);
+
+  const suv = makeSuv();
+  suv.rotation.order = 'YXZ';
+  scene.add(suv);
+  const tg = trafficGeometries();
+  const bodies = new InstancedMesh(tg.body, flat(0xffffff), TRAFFIC_COUNT);
+  const cabins = new InstancedMesh(tg.cabin, flat(0x1b2a38), TRAFFIC_COUNT);
+  bodies.frustumCulled = cabins.frustumCulled = false;
+  scene.add(bodies, cabins);
+
+  const base = new URL('map/', document.baseURI).href;
+  let index: RouteIndex | undefined;
+  const chunks = new Map<number, Loaded | 'loading'>();
+  let anchor: [number, number] | undefined;
+  let k = 1; // real meters per mercator meter at the anchor
+  let shownS: number | undefined;
+  let lateral = 0;
+  let speedEst = 10;
+  let traffic: TrafficCar[] | undefined;
+  const r = rng(opts.seed);
+  const camPos = new Vector3(), camLook = new Vector3();
+  let camReady = false;
+
+  fetch(base + 'route.json')
+    .then((res) => res.json())
+    .then((j: RouteIndex) => { index = j; })
+    .catch(() => { status.textContent = 'Could not load the map.'; });
+
+  function want(i: number) {
+    if (!index || i < 0 || i >= index.chunks || chunks.has(i)) return;
+    chunks.set(i, 'loading');
+    fetch(`${base}c/${String(i).padStart(4, '0')}.json`)
+      .then((res) => res.json())
+      .then((data: MapChunk) => {
+        const meshes = buildChunk(data);
+        const entry: Loaded = { data, meshes, lanes: expandLanes(data.ln) };
+        chunks.set(i, entry);
+        scene.add(meshes.group);
+        placeGroup(entry);
+      })
+      .catch(() => chunks.delete(i));
+  }
+
+  function placeGroup(c: Loaded) {
+    if (!anchor) return;
+    c.meshes.group.position.set((c.data.o[0] - anchor[0]) * k, 0, -(c.data.o[1] - anchor[1]) * k);
+    c.meshes.group.scale.set(k, 1, k);
+  }
+
+  /** Move the scene origin to this chunk (keeps coordinates small for the GPU). */
+  function rebase(c: MapChunk) {
+    const old = anchor;
+    anchor = [c.o[0], c.o[1]];
+    k = Math.cos((c.lat * Math.PI) / 180);
+    for (const e of chunks.values()) if (e !== 'loading') placeGroup(e);
+    if (old) {
+      // Shift the camera with the world so it doesn't jump.
+      const dx = (old[0] - anchor[0]) * k, dz = -(old[1] - anchor[1]) * k;
+      camPos.x += dx; camPos.z += dz;
+      camLook.x += dx; camLook.z += dz;
+    }
+  }
+
+  function pose(s: number): RoutePose | undefined {
+    if (!index) return undefined;
+    const e = chunks.get(chunkIndex(index, s));
+    if (!e || e === 'loading') return undefined;
+    return poseAt(e.data, s, e.lanes);
+  }
+
+  /** Scene-space position of a point `off` meters right of the route at pose p. */
+  function toScene(p: RoutePose, off: number, out: Vector3, lift = 0) {
+    // Right of travel in mercator is (dy, -dx); scene z = -north.
+    out.set((p.x - anchor![0]) * k + p.dy * off, p.h + lift, -(p.y - anchor![1]) * k + p.dx * off);
+    return out;
+  }
+
+  function resize() {
+    const w = container.clientWidth, h = container.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.fov = camera.aspect < 0.8 ? 62 : 52;
+    camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(container);
+  resize();
+
+  const dummy = new Object3D();
+  dummy.rotation.order = 'YXZ';
+  const tint = new Color();
+  const v = new Vector3(), ahead = new Vector3();
+
+  function frame(dt: number, _idleSpeed: number, progress: number) {
+    if (!index) { renderer.render(scene, camera); return; }
+    const target = opts.mile !== undefined ? opts.mile * 1609.344 : progress * index.total;
+    const ci = chunkIndex(index, shownS ?? target);
+    for (let i = ci - 1; i <= ci + 2; i++) want(i);
+    for (const [i, e] of chunks) {
+      if (i < ci - 2 || i > ci + 3) {
+        if (e !== 'loading') { scene.remove(e.meshes.group); e.meshes.dispose(); }
+        chunks.delete(i);
+      }
+    }
+
+    // Ease the drawn car toward the game's position; jump if it's far (offline catch-up, first load).
+    if (shownS === undefined || Math.abs(target - shownS) > SNAP_GAP) {
+      if (!pose(target)) { renderer.render(scene, camera); return; }
+      shownS = target;
+      traffic = undefined;
+      camReady = false;
+    } else {
+      const next = shownS + (target - shownS) * Math.min(1, dt * 2.5);
+      if (pose(next)) {
+        speedEst += ((next - shownS) / Math.max(dt, 1e-3) - speedEst) * Math.min(1, dt * 2);
+        shownS = next;
+      }
+    }
+    const p = pose(shownS)!;
+    const cur = chunks.get(chunkIndex(index, shownS)) as Loaded;
+    if (!anchor || anchor[0] !== cur.data.o[0] || anchor[1] !== cur.data.o[1]) rebase(cur.data);
+    if (status.isConnected) { status.remove(); container.dataset.ready = '1'; }
+
+    // The SUV keeps to the rightmost lane of our side of the road.
+    const laneTarget = laneOffset(p.fwd, p.back, p.fwd - 1);
+    lateral += (laneTarget - lateral) * Math.min(1, dt * 1.5);
+    toScene(p, lateral, suv.position);
+    suv.rotation.set(Math.atan(p.grade), Math.atan2(-p.dx, p.dy), 0);
+    suv.position.y += Math.sin(performance.now() / 110) * 0.02;
+
+    // Traffic, in lanes of our direction.
+    const road = { lanes: p.fwd, playerLane: p.fwd - 1 };
+    const vs = Math.max(5, speedEst);
+    traffic ??= initTraffic(TRAFFIC_COUNT, vs, r, road);
+    stepTraffic(traffic, Math.min(dt, 0.1), vs, r, road);
+    traffic.forEach((c, i) => {
+      const cp = pose(shownS! - c.z);
+      if (!cp) { dummy.scale.setScalar(0); }
+      else {
+        toScene(cp, laneOffset(cp.fwd, cp.back, Math.min(c.x, cp.fwd - 1)), dummy.position);
+        dummy.rotation.set(Math.atan(cp.grade), Math.atan2(-cp.dx, cp.dy) + (c.lane - c.x) * 0.15, 0);
+        dummy.scale.setScalar(1);
+      }
+      dummy.updateMatrix();
+      bodies.setMatrixAt(i, dummy.matrix);
+      cabins.setMatrixAt(i, dummy.matrix);
+      bodies.setColorAt(i, tint.setHex(CAR_COLORS[c.color % CAR_COLORS.length]));
+    });
+    bodies.instanceMatrix.needsUpdate = cabins.instanceMatrix.needsUpdate = true;
+    if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
+
+    // Chase camera: behind and above, looking a little ahead along the road.
+    const back = pose(shownS - 25) ?? p;
+    const fwd = pose(shownS + 30) ?? p;
+    toScene(back, lateral * 0.5, v, 0);
+    v.y = Math.max(v.y, p.h) + 17;
+    toScene(fwd, lateral * 0.5, ahead, 0);
+    if (!camReady) { camPos.copy(v); camLook.copy(ahead); camReady = true; }
+    const ease = Math.min(1, dt * 3);
+    camPos.lerp(v, ease);
+    camLook.lerp(ahead, ease);
+    camera.position.copy(camPos);
+    camera.lookAt(camLook);
+    sun.target.position.copy(suv.position);
+    sun.position.copy(suv.position).add(v.set(-200, 400, 140));
+    sun.target.updateMatrixWorld();
+
+    renderer.render(scene, camera);
+  }
+
+  function place() {
+    if (!index) return undefined;
+    const s = shownS ?? 0;
+    const passed = index.waypoints.filter((w) => w.s <= s + 1);
+    return { s, total: index.total, prev: passed[passed.length - 1]?.name ?? index.waypoints[0].name, next: index.waypoints.find((w) => w.s > s + 1) };
+  }
+
+  return { frame, place };
+}

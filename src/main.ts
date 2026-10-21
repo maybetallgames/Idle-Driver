@@ -4,7 +4,7 @@ import {
   honk, level, newGame, nextLandmark, serialize, speed, tripProgress, upgradeCost,
   type GameState,
 } from './game';
-import { createRoadScene } from './scene/scene';
+import { createMapView } from './scene/mapScene';
 
 const SAVE_KEY = 'idle-driver-save';
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -21,9 +21,13 @@ function save() {
 
 let { state, seconds: offline } = catchUp(load(), Date.now());
 
-// ?seed=123 fixes the scenery and traffic, so screenshots are reproducible.
-const seedParam = Number(new URLSearchParams(location.search).get('seed'));
-const roadScene = createRoadScene($('view'), seedParam || Math.floor(Math.random() * 1e9));
+// ?seed=123 fixes the traffic so screenshots are reproducible; ?mile=430 shows a spot on the route.
+const params = new URLSearchParams(location.search);
+const mileParam = params.get('mile');
+const roadScene = createMapView($('view'), {
+  seed: Number(params.get('seed')) || Math.floor(Math.random() * 1e9),
+  mile: mileParam === null ? undefined : Number(mileParam),
+});
 const upgradesEl = $('upgrades');
 
 // Build upgrade buttons once; update text each frame.
@@ -51,6 +55,11 @@ function render() {
   $('next').textContent = next
     ? `Next: ${next.name} in ${formatNumber(next.at - state.odometer)} miles`
     : 'You made it to the mountains! 🏔️';
+  const where = roadScene.place();
+  if (where) {
+    const toNext = where.next ? ` · ${where.next.name} in ${formatNumber((where.next.s - where.s) / 1609.344)} mi` : '';
+    $('place').textContent = `Near ${where.prev}${toNext}`;
+  }
   for (const b of upgradeButtons) {
     b.name.textContent = `${b.u.name} (lv ${level(state, b.u.id)})`;
     b.cost.textContent = `${formatNumber(upgradeCost(state, b.u.id))} mi`;
