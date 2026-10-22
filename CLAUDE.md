@@ -31,7 +31,8 @@ and the result must be playable in a mobile browser.
   (`sensorCones`) and whether a point is perceived. `src/scene/sensorShader.ts` draws it: full color
   inside the wedges, dim night-blue outside, glowing wedge edges.
 - `src/map/`: pure map helpers. `geo.ts` (projection, resampling, lane/building rules; also used by
-  the bake script) and `chunk.ts` (baked chunk format, position/heading along the route).
+  the bake script), `chunk.ts` (baked chunk format, position/heading along the route) and `strip.ts`
+  (the route strip minimap).
 - `src/scene/`: Three.js rendering. `mapScene.ts` loads chunks around the car and drives the SUV,
   traffic and camera; `mapMeshes.ts` builds terrain/roads/buildings/trees for a chunk; `models.ts`
   has the low-poly cars. Rendering reads game state and owns no rules.
