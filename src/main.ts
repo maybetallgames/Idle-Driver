@@ -5,8 +5,9 @@ import {
   currentSpeed, deserialize, formatCash, formatNumber, gasPrice, honk, hurryTow, income, isMaxed, level,
   missingRequirements, newGame, nextLandmark, resolveTakeover, serialize, stateAt, stopReason, takeoverKind,
   upgradeCost, viewers, type GameState, type UpgradeKind,
-  LANDMARKS, STATES, daylight, hourOf, isNight, regionAt, DAY,
+  LANDMARKS, STATES, daylight, hourOf, isNight, regionAt, DAY, arrived, hint, tripSummary,
 } from './game';
+import { isMuted, setMuted, sfx, unlockAudio } from './sound';
 import { buildStrip, type Strip } from './map/strip';
 import { createMapView } from './scene/mapScene';
 import { sensorCones } from './perception';
@@ -133,7 +134,11 @@ const upgradeButtons = GROUPS.flatMap(([kind, title, parent]) => {
     const btn = document.createElement('button');
     btn.className = 'upgrade';
     btn.innerHTML = `<span><span class="name"></span><br><span class="desc"></span></span><span class="cost"></span>`;
-    btn.addEventListener('click', () => { state = buy(state, u.id); save(); render(); });
+    btn.addEventListener('click', () => {
+      const before = autonomyLevel(state.levels), next = buy(state, u.id);
+      if (next !== state) (autonomyLevel(next.levels) > before ? sfx.levelUp : sfx.buy)();
+      state = next; save(); render();
+    });
     el.appendChild(btn);
     return { u, btn, name: btn.querySelector('.name')!, desc: btn.querySelector('.desc')!, cost: btn.querySelector('.cost')! };
   });
@@ -154,13 +159,58 @@ const crashBtn = $<HTMLButtonElement>('crash');
 crashBtn.addEventListener('click', () => { state = hurryTow(state); save(); render(); });
 const coffeeBtn = $<HTMLButtonElement>('coffee');
 coffeeBtn.addEventListener('click', () => { state = coffee(state); save(); render(); });
-$('honk').addEventListener('click', () => { state = honk(state); render(); });
+$('honk').addEventListener('click', () => { sfx.honk(); state = honk(state); render(); });
+function newTrip() { state = newGame(Date.now()); endingShown = false; nextName = nextLandmark(state)?.name; save(); render(); }
 $('reset').addEventListener('click', () => {
-  if (confirm('Start the trip over from Orlando?')) { state = newGame(Date.now()); save(); render(); }
+  if (confirm('Start the trip over from Orlando?')) newTrip();
 });
+$('new-trip').addEventListener('click', newTrip);
+document.addEventListener('pointerdown', unlockAudio);
+const muteBtn = $('mute');
+const showMute = () => { muteBtn.textContent = isMuted() ? '🔇 Sound off' : '🔊 Sound on'; };
+muteBtn.addEventListener('click', () => { setMuted(!isMuted()); showMute(); });
+showMute();
+
+// The ending: a summary card and the stream chat going wild.
+const CHAT_NAMES = ['roadtrip_rita', 'xX_lidar_Xx', 'kansas_kev', 'dogmom42', 'autopilot_fan', 'snackattack', 'mtn_mike', 'grandma_joan', 'buc_ees_lover', 'tow_truck_ted'];
+const CHAT_LINES = ['WE MADE IT 🏔️🏔️🏔️', 'that sunset tho 😭', 'GG dad', 'the dog is so happy', 'remember the corn maze crash lmao', 'best stream ever', 'F for the snacks', 'next trip: Alaska??', '🚙💨💨', 'chat we did it', 'dad finally gets a nap', 'mountains look fake they are so pretty', 'no more Kansas 🌾', 'the car drove itself the whole last day!!', 'subscribed 🔔'];
+let endingShown = false, chatTimer = 0, chatN = 0;
+function showEnding() {
+  endingShown = true;
+  const rows = tripSummary(state);
+  $('summary').replaceChildren(...rows.map(([emoji, k, v], i) => {
+    const li = document.createElement('li');
+    if (i === rows.length - 1) li.className = 'wide';
+    li.innerHTML = `<span class="k"></span><span class="v"></span>`;
+    li.querySelector('.k')!.textContent = `${emoji} ${k}`;
+    li.querySelector('.v')!.textContent = v;
+    return li;
+  }));
+  $('chat').replaceChildren();
+  clearInterval(chatTimer);
+  const addChat = () => {
+    const li = document.createElement('li');
+    li.innerHTML = '<b></b> <span></span>';
+    li.querySelector('b')!.textContent = CHAT_NAMES[(chatN * 7) % CHAT_NAMES.length];
+    li.querySelector('span')!.textContent = CHAT_LINES[chatN % CHAT_LINES.length];
+    chatN++;
+    const list = $('chat');
+    list.appendChild(li);
+    while (list.children.length > 7) list.firstElementChild!.remove();
+  };
+  for (let i = 0; i < 4; i++) addChat();
+  chatTimer = window.setInterval(addChat, 1300);
+}
 $('build').textContent = `build ${__BUILD_ID__}`;
 
 function render() {
+  const done = arrived(state);
+  if (done && !endingShown) showEnding();
+  if (!done && endingShown) { endingShown = false; clearInterval(chatTimer); }
+  $('ending').hidden = !done;
+  const tip = hint(state);
+  $('hint').hidden = !tip;
+  if (tip) $('hint').textContent = `💡 ${tip}`;
   $('cash').textContent = formatCash(state.cash);
   $('rate').textContent = `+${formatCash(income(state) * 60)}/min`;
   $('viewers').textContent = formatNumber(viewers(state));
@@ -168,7 +218,7 @@ function render() {
   gas.style.width = `${((state.gas / TANK_GALLONS) * 100).toFixed(1)}%`;
   gas.style.background = state.gas < TANK_GALLONS * 0.15 ? '#e5484d' : 'var(--accent)';
   $('gas-text').textContent = `$${gasPrice(state).toFixed(2)}/gal`;
-  $('speedo').textContent = `${Math.round(currentSpeed(state))} mph · ${clockText(state)}`;
+  $('speedo').textContent = done ? `🌅 Sunset · day ${Math.floor(state.clock / DAY) + 1}` : `${Math.round(currentSpeed(state))} mph · ${clockText(state)}`;
 
   const auto = autonomyLevel(state.levels);
   $('autonomy').textContent = `L${auto} · ${AUTONOMY[auto].name}`;
@@ -188,7 +238,7 @@ function render() {
   }
   const reason = stopReason(state);
   const status = $('status');
-  status.hidden = !(reason === 'refuel' || reason === 'gas' || reason === 'arrived');
+  status.hidden = !(reason === 'refuel' || reason === 'gas');
   if (!status.hidden) status.textContent = stopText(state);
 
   const tired = state.tiredness;
@@ -214,6 +264,7 @@ function render() {
     : 'You made it to the mountains! 🏔️';
   if (next?.name !== nextName) {
     const passed = LANDMARKS.filter((l) => l.at <= state.odometer).pop();
+    if (passed && nextName !== undefined) sfx.landmark();
     if (passed && nextName !== undefined) toast(`${passed.emoji} ${passed.name}!${passed.kind === 'city' ? '' : ' Chat goes wild.'}`);
     nextName = next?.name;
   }
@@ -240,12 +291,13 @@ let lastSave = 0;
 function frame(t: number) {
   const dt = Math.min((t - last) / 1000, 1);
   last = t;
-  const wasStuck = !!state.takeover, wasCrashed = !!state.crash;
+  const wasStuck = !!state.takeover, wasCrashed = !!state.crash, wasHere = arrived(state);
   state = { ...advance(state, dt, { dadHelps: true }), lastTick: Date.now() };
-  if (state.takeover && !wasStuck) navigator.vibrate?.(60);
-  if (state.crash && !wasCrashed) navigator.vibrate?.([80, 60, 200]);
+  if (state.takeover && !wasStuck) { navigator.vibrate?.(60); sfx.takeover(); }
+  if (state.crash && !wasCrashed) { navigator.vibrate?.([80, 60, 200]); sfx.crash(); }
+  if (arrived(state) && !wasHere) { sfx.arrive(); window.setTimeout(() => $('ending').scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 6500); }
   roadScene.frame(Math.min(dt, 0.1), state.odometer * 1609.344, sensorCones(state.levels), autonomyLevel(state.levels),
-    state.crash && { id: state.crashes, kind: state.crash.kind }, daylight(state));
+    state.crash && { id: state.crashes, kind: state.crash.kind }, daylight(state), arrived(state));
   render();
   if (t - lastSave > 5000) { save(); lastSave = t; }
   requestAnimationFrame(frame);

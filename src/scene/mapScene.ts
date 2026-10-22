@@ -1,8 +1,8 @@
 // The 3D view on the real map: loads baked chunks around the car, drives the SUV along the real
 // route with traffic, and follows it with the camera. Reads game numbers; owns no game rules.
 import {
-  BoxGeometry, Color, DirectionalLight, Fog, HemisphereLight, InstancedMesh, MeshBasicMaterial, Object3D,
-  PerspectiveCamera, Scene, Vector3, WebGLRenderer,
+  BoxGeometry, Color, DirectionalLight, Fog, HemisphereLight, InstancedMesh, Mesh, MeshBasicMaterial, Object3D,
+  PerspectiveCamera, Scene, SphereGeometry, Vector3, WebGLRenderer,
 } from 'three';
 import { chunkIndex, expandLanes, laneOffset, poseAt, type MapChunk, type RouteIndex, type RoutePose } from '../map/chunk';
 import { initTraffic, rng, stepTraffic, type TrafficCar } from '../world';
@@ -11,6 +11,8 @@ import { sensorUniforms, setCones, withSensorView } from './sensorShader';
 import { flat, makeSuv, trafficGeometries } from './models';
 import { buildChunk, setBlueLaneLines, type ChunkMeshes } from './mapMeshes';
 import { createCrashView } from './crashScene';
+import { makeRider } from './models';
+import { RIDERS } from '../crashSim';
 
 const TRAFFIC_COUNT = 10;
 const CAR_COLORS = [0xd9d9d9, 0x9aa5b1, 0x3d5a80, 0xe76f51, 0xf4f1de, 0x6d597a, 0x283618, 0xbc4749, 0x1d1d1d];
@@ -21,9 +23,10 @@ export interface MapView {
   /**
    * Advance and draw one frame. `routeMeters` is how far along the route the car is,
    * `cones` what the car's sensors cover, `autonomy` the autonomy level (0..5), `crash` the crash in
-   * progress (a new `id` plays the crash animation), `daylight` 0 (night) to 1 (day).
+   * progress (a new `id` plays the crash animation), `daylight` 0 (night) to 1 (day), `ending` true
+   * once the family has arrived (full color, sunset, the camera rises over the mountains).
    */
-  frame(dt: number, routeMeters: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }, daylight?: number): void;
+  frame(dt: number, routeMeters: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }, daylight?: number, ending?: boolean): void;
   /** Where we are, for the HUD (undefined until the map index has loaded). */
   place(): { s: number; total: number; prev: string; next?: { name: string; s: number } } | undefined;
 }
@@ -74,6 +77,21 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
   scene.add(bodies, cabins, boxes);
   const crashView = createCrashView(scene);
   let playedCrash = -1;
+  // The family at the overlook, for the ending.
+  const family = new Object3D();
+  RIDERS.filter((r) => !r.id.startsWith('s')).forEach((r, i) => {
+    const m = makeRider(r.id, r.half).group;
+    m.position.set(i * 0.8, r.half[1] + (r.id === 'dog' ? 0 : 0.35), 0);
+    family.add(m);
+  });
+  family.visible = false;
+  scene.add(family);
+  const sunDisk = new Mesh(new SphereGeometry(120, 24, 12), new MeshBasicMaterial({ color: 0xffd27a, fog: false }));
+  sunDisk.visible = false;
+  scene.add(sunDisk);
+  let endT = 0;
+  const SUNSET = new Color(0xf29e6b), warm = new Color(0xffb27a), white = new Color(0xfff2d6);
+  const fwdDir = new Vector3();
   let crashTime = 0;
 
   const base = new URL('map/', document.baseURI).href;
@@ -159,13 +177,22 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
   const tint = new Color();
   const v = new Vector3(), ahead = new Vector3();
 
-  function frame(dt: number, routeMeters: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }, daylight = 1) {
+  function frame(dt: number, routeMeters: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }, daylight = 1, ending = false) {
     setCones(cones);
+    // The ending fades from the sensor view to the full-color world at sunset.
+    endT = ending ? Math.min(1, endT + dt / 6) : 0;
+    const e = endT * endT * (3 - 2 * endT);
+    sensorUniforms.uSensorMix.value = 1 - e;
     // Day and night: dimmer light and a darker sky after dark.
-    hemi.intensity = 0.5 + 1.5 * daylight;
-    sun.intensity = 0.1 + 1.9 * daylight;
-    sky.lerpColors(NIGHT_SKY, DAY_SKY, daylight);
+    const light = daylight + (1 - daylight) * e;
+    hemi.intensity = 0.5 + 1.5 * light;
+    sun.intensity = 0.1 + 1.9 * light;
+    sun.color.lerpColors(white, warm, e);
+    sky.lerpColors(NIGHT_SKY, DAY_SKY, daylight).lerp(SUNSET, e);
     fog.color.copy(sky);
+    fog.near = 300 + 900 * e;
+    fog.far = 1300 + 4500 * e;
+    if (ending && camera.far < 6000) { camera.far = 7000; camera.updateProjectionMatrix(); }
     setBlueLaneLines(autonomy >= 2);
     if (!index) { renderer.render(scene, camera); return; }
     const target = Math.min(index.total, opts.mile !== undefined ? opts.mile * 1609.344 : routeMeters);
@@ -255,6 +282,22 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
       v.set(ahead.x + Math.sin(a) * 8, ahead.y + 3.5, ahead.z + Math.cos(a) * 8);
       ahead.y -= 1.8; // look a bit below the wreck so it sits above the crash banner
     }
+    family.visible = e > 0;
+    if (e > 0) {
+      // Park at the overlook: the family stands beside the SUV, and the camera swings round
+      // behind them to look over the car toward the setting sun.
+      fwdDir.set(p.dx, 0, -p.dy).normalize();
+      toScene(p, lateral + 2.6, family.position);
+      family.rotation.y = suv.rotation.y;
+      const side = new Vector3(-fwdDir.z, 0, fwdDir.x);
+      const near = new Vector3().copy(suv.position).addScaledVector(fwdDir, -12).addScaledVector(side, 7);
+      near.y = Math.max(near.y, p.h) + 4;
+      v.lerp(near, e);
+      ahead.lerp(new Vector3().copy(suv.position).addScaledVector(fwdDir, 80).setY(suv.position.y + 12), e);
+      sunDisk.position.copy(suv.position).addScaledVector(fwdDir, 3000).addScaledVector(side, 400);
+      sunDisk.position.y = suv.position.y + 260;
+    }
+    sunDisk.visible = e > 0.3;
     if (!camReady) { camPos.copy(v); camLook.copy(ahead); camReady = true; }
     const ease = Math.min(1, dt * 3);
     camPos.lerp(v, ease);

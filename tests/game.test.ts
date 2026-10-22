@@ -7,7 +7,7 @@ import {
   currentLandmark, currentSpeed, deserialize, formatCash, formatNumber, gasPrice, honk, hurryTow, income, isMaxed,
   level, missingRequirements, mpg, newGame, nextLandmark, resolveTakeover, serialize, speed, stopReason,
   takeoverGap, targetViewers, tripProgress, upgradeCost, viewers, type GameState,
-  START_CLOCK, TIME_SCALE, daylight, hourOf, isNight, regionAt,
+  START_CLOCK, TIME_SCALE, SPEED_CAP, daylight, hourOf, isNight, regionAt, DAY, hint, tripDay, tripSummary,
 } from '../src/game';
 
 /** A game with no takeovers coming, for testing one thing at a time. */
@@ -23,7 +23,8 @@ describe('driving', () => {
 
   it('upgrades add mph and multipliers, up to a top speed', () => {
     expect(speed(calm({ levels: { radar: 1, acc: 1 } }))).toBeCloseTo((BASE_MPH + 3) * 1.1);
-    expect(speed(calm({ levels: { lidar: 40 } }))).toBe(MAX_MPH);
+    expect(speed(calm({ levels: { lidar: 40 } }))).toBe(SPEED_CAP[0]);
+    expect(speed(calm({ levels: { lidar: 40, fsd: 1 } }))).toBe(MAX_MPH);
   });
 
   it('stops at the end of the trip', () => {
@@ -421,5 +422,42 @@ describe('formatting', () => {
   it('formats money', () => {
     expect(formatCash(3.456)).toBe('$3.46');
     expect(formatCash(1500)).toBe('$1.50K');
+  });
+});
+
+describe('ending and hints', () => {
+  const allFeatures = { camera: 5, radar: 2, acc: 1, lanekeep: 1, autosteer: 0 };
+  it('records the day the car first steers itself', () => {
+    const levels = { ...allFeatures };
+    const ready = calm({ cash: 1e6, levels, clock: START_CLOCK + 2 * DAY });
+    const s = buy(ready, 'autosteer');
+    expect(autonomyLevel(s.levels)).toBeGreaterThanOrEqual(2);
+    expect(s.stats.autopilotDay).toBe(3);
+    expect(tripDay(s)).toBe(3);
+    // Later levels don't move it.
+    const later = buy({ ...s, clock: START_CLOCK + 4 * DAY, levels: { ...s.levels, sidecams: 1 } }, 'lanechange');
+    expect(later.stats.autopilotDay).toBe(3);
+  });
+
+  it('keeps autopilotDay through a save and loads old saves without it', () => {
+    const s = calm({ stats: { earned: 1, fuelSpent: 0, gallons: 0, peakViewers: 9, autopilotDay: 4 } });
+    expect(deserialize(serialize(s), 0).stats.autopilotDay).toBe(4);
+    expect(deserialize(serialize(calm()), 0).stats.autopilotDay).toBeUndefined();
+  });
+
+  it('summarizes the trip', () => {
+    const s = calm({ odometer: TRIP_LENGTH, clock: START_CLOCK + 6.5 * DAY, crashes: 3 });
+    const rows = Object.fromEntries(tripSummary(s).map(([, k, v]) => [k, v]));
+    expect(rows['Days on the road']).toBe('6.5 days');
+    expect(rows['Crashes']).toBe('3');
+    expect(rows['Car first steered itself']).toMatch(/never/);
+  });
+
+  it('gives hints for a new player, then gets out of the way', () => {
+    expect(hint(newGame(0))).toMatch(/Camera|Honk/);
+    expect(hint(calm({ levels: { camera: 1 } }))).toMatch(/Stream tab/);
+    expect(hint(calm({ levels: { camera: 1, mount: 1 } }))).toMatch(/Radar/);
+    expect(hint(calm({ levels: { camera: 1, mount: 1, radar: 1, acc: 1 } }))).toBeUndefined();
+    expect(hint(calm({ odometer: TRIP_LENGTH }))).toBeUndefined();
   });
 });
