@@ -171,22 +171,109 @@ export interface Landmark {
   /** Route miles from the start. */
   at: number;
   name: string;
+  emoji: string;
+  /** Cities are the route's waypoints; sights and state lines spike the stream when you pass them. */
+  kind: 'city' | 'sight' | 'border';
 }
 
-/** Cities along the real route, at their route mile (from the baked map, checked by a test). */
+/**
+ * Cities and sights along the real route, at their route mile. Cities come from the baked map
+ * (checked by a test); sights and state lines were placed from the route's overview line.
+ */
 export const LANDMARKS: readonly Landmark[] = [
-  { at: 0, name: 'Orlando, FL' },
-  { at: 438.2, name: 'Atlanta, GA' },
-  { at: 554.5, name: 'Chattanooga, TN' },
-  { at: 685.8, name: 'Nashville, TN' },
-  { at: 991.6, name: 'St. Louis, MO' },
-  { at: 1239.8, name: 'Kansas City, MO' },
-  { at: 1837.2, name: 'Denver, CO' },
-  { at: 1862.4, name: 'Boulder, CO' },
-  { at: 1879.4, name: 'Lyons, CO' },
-  { at: 1899.9, name: 'Estes Park, CO' },
-  { at: 1912.0, name: 'Rocky Mountain National Park' },
+  { at: 0, name: 'Orlando, FL', emoji: '🏰', kind: 'city' },
+  { at: 79, name: 'Ocala horse country', emoji: '🐎', kind: 'sight' },
+  { at: 204, name: 'Welcome to Georgia', emoji: '🍑', kind: 'border' },
+  { at: 361, name: 'Macon, GA', emoji: '🌸', kind: 'sight' },
+  { at: 438.2, name: 'Atlanta, GA', emoji: '🏙️', kind: 'city' },
+  { at: 550, name: 'Welcome to Tennessee', emoji: '🎸', kind: 'border' },
+  { at: 552, name: 'Lookout Mountain', emoji: '⛰️', kind: 'sight' },
+  { at: 554.5, name: 'Chattanooga, TN', emoji: '🚂', kind: 'city' },
+  { at: 685.8, name: 'Nashville, TN', emoji: '🎤', kind: 'city' },
+  { at: 732, name: 'Welcome to Kentucky', emoji: '🐴', kind: 'border' },
+  { at: 820, name: 'Ohio River at Paducah', emoji: '🌉', kind: 'sight' },
+  { at: 918, name: 'Illinois cornfields', emoji: '🌽', kind: 'sight' },
+  { at: 990, name: 'Gateway Arch', emoji: '🌈', kind: 'sight' },
+  { at: 991.6, name: 'St. Louis, MO', emoji: '⚾', kind: 'city' },
+  { at: 1124, name: 'Columbia, MO', emoji: '🐯', kind: 'sight' },
+  { at: 1239.8, name: 'Kansas City, MO', emoji: '🍖', kind: 'city' },
+  { at: 1253, name: 'Welcome to Kansas', emoji: '🌾', kind: 'border' },
+  { at: 1303, name: 'Topeka, KS', emoji: '🏛️', kind: 'sight' },
+  { at: 1413, name: 'Salina, KS', emoji: '🌾', kind: 'sight' },
+  { at: 1504, name: 'Hays, KS (still Kansas)', emoji: '😴', kind: 'sight' },
+  { at: 1633, name: 'Giant Van Gogh easel, Goodland', emoji: '🌻', kind: 'sight' },
+  { at: 1669, name: 'Welcome to Colorful Colorado', emoji: '🏔️', kind: 'border' },
+  { at: 1756, name: 'Limon: first view of the Rockies', emoji: '🏔️', kind: 'sight' },
+  { at: 1837.2, name: 'Denver, CO', emoji: '🏙️', kind: 'city' },
+  { at: 1862.4, name: 'Boulder, CO', emoji: '🚲', kind: 'city' },
+  { at: 1864, name: 'The Flatirons', emoji: '⛰️', kind: 'sight' },
+  { at: 1879.4, name: 'Lyons, CO', emoji: '🌲', kind: 'city' },
+  { at: 1899.9, name: 'Estes Park, CO', emoji: '🦌', kind: 'city' },
+  { at: 1912.0, name: 'Rocky Mountain National Park', emoji: '🏞️', kind: 'city' },
 ];
+
+export interface Region {
+  /** Route mile where it starts. */
+  at: number;
+  name: string;
+  /** Viewer multiplier: scenery matters. */
+  viewers: number;
+  /** Takeover gap multiplier: cities ask for help more often. */
+  takeovers: number;
+}
+
+/** Stretches of scenery. Kansas is the grind; the Rockies are payday. */
+export const REGIONS: readonly Region[] = [
+  { at: 0, name: 'Florida flatlands', viewers: 1, takeovers: 1 },
+  { at: 204, name: 'Georgia pines', viewers: 1, takeovers: 1 },
+  { at: 420, name: 'Atlanta traffic', viewers: 1.3, takeovers: 0.5 },
+  { at: 460, name: 'North Georgia', viewers: 1, takeovers: 1 },
+  { at: 540, name: 'Tennessee hills', viewers: 1.25, takeovers: 0.9 },
+  { at: 675, name: 'Nashville', viewers: 1.3, takeovers: 0.6 },
+  { at: 700, name: 'Kentucky and Illinois farmland', viewers: 0.9, takeovers: 1 },
+  { at: 980, name: 'St. Louis', viewers: 1.4, takeovers: 0.6 },
+  { at: 1000, name: 'Missouri', viewers: 0.9, takeovers: 1 },
+  { at: 1230, name: 'Kansas City', viewers: 1.1, takeovers: 0.7 },
+  { at: 1253, name: 'Kansas (the grind)', viewers: 0.6, takeovers: 1.2 },
+  { at: 1669, name: 'Colorado high plains', viewers: 1.1, takeovers: 1 },
+  { at: 1820, name: 'Denver and Boulder', viewers: 1.3, takeovers: 0.6 },
+  { at: 1865, name: 'The Rockies', viewers: 1.7, takeovers: 0.7 },
+];
+
+export function regionAt(miles: number): Region {
+  let cur = REGIONS[0];
+  for (const r of REGIONS) if (miles >= r.at) cur = r;
+  return cur;
+}
+
+// ---- Day and night ----
+/** Game time runs this much faster than real time: a day on the road is two real hours. */
+export const TIME_SCALE = 12;
+export const DAY = 24 * 3600;
+/** The trip starts at 8 in the morning. */
+export const START_CLOCK = 8 * 3600;
+/** Night: Dad tires faster (until the car can drive at night) and fewer people watch. */
+export const NIGHT_TIRE = 1.6;
+export const NIGHT_VIEWERS = 0.85;
+
+/** Hour of the game day, 0..24. */
+export function hourOf(state: GameState): number {
+  return (((state.clock % DAY) + DAY) % DAY) / 3600;
+}
+
+export function isNight(state: GameState): boolean {
+  const h = hourOf(state);
+  return h < 6 || h >= 20;
+}
+
+/** 0 at night, 1 in full day, ramping over dawn (6-8) and dusk (18-20). */
+export function daylight(state: GameState): number {
+  const h = hourOf(state);
+  if (h < 6 || h >= 20) return 0;
+  if (h < 8) return (h - 6) / 2;
+  if (h >= 18) return (20 - h) / 2;
+  return 1;
+}
 
 export const TRIP_LENGTH = LANDMARKS[LANDMARKS.length - 1].at;
 export const SAVE_VERSION = 3;
@@ -220,6 +307,8 @@ export interface GameState {
   hype: number;
   /** Followers never leave; they raise the base audience. */
   followers: number;
+  /** Game clock in seconds since midnight of the first day (runs TIME_SCALE times real time). */
+  clock: number;
   /** Seconds of driving until the car next needs help. */
   untilTakeover: number;
   /** How many takeovers so far (seeds which one comes next). */
@@ -238,7 +327,7 @@ export interface GameState {
 export function newGame(now: number): GameState {
   return {
     version: SAVE_VERSION, odometer: 0, cash: 5, levels: {}, lastTick: now,
-    gas: TANK_GALLONS, viewers: BASE_VIEWERS, hype: 0, followers: 0,
+    gas: TANK_GALLONS, viewers: BASE_VIEWERS, hype: 0, followers: 0, clock: START_CLOCK,
     untilTakeover: takeoverGap(0, 0), takeovers: 0, tiredness: 0, crashes: 0,
     stats: { earned: 0, fuelSpent: 0, gallons: 0, peakViewers: BASE_VIEWERS },
   };
@@ -338,7 +427,8 @@ export function payoutRate(state: GameState): number {
 
 /** Where the steady audience is heading. */
 export function targetViewers(state: GameState, moving = !stopReason(state)): number {
-  return (BASE_VIEWERS + FOLLOWER_PULL * Math.sqrt(state.followers)) * viewerMul(state) * (moving ? 1 : PARKED_VIEWERS);
+  return (BASE_VIEWERS + FOLLOWER_PULL * Math.sqrt(state.followers)) * viewerMul(state)
+    * regionAt(state.odometer).viewers * (isNight(state) ? NIGHT_VIEWERS : 1) * (moving ? 1 : PARKED_VIEWERS);
 }
 
 /** $ per second right now. */
@@ -433,7 +523,8 @@ export function advance(state: GameState, seconds: number, opts: AdvanceOptions 
       s = rest(stream(s, dt, false), dt);
     } else {
       const mph = speed(s);
-      const rate = TIRE_RATE[autonomyLevel(s.levels)] / (1 + effect(s.levels, 'rest'));
+      const auto = autonomyLevel(s.levels);
+      const rate = (TIRE_RATE[auto] / (1 + effect(s.levels, 'rest'))) * (isNight(s) && auto < 4 ? NIGHT_TIRE : 1);
       const untilAsleep = rate > 0 ? (1 - s.tiredness) / rate : Infinity;
       const gpm = 1 / mpg(s);
       const untilEmpty = (s.gas / gpm / mph) * 3600;
@@ -441,6 +532,10 @@ export function advance(state: GameState, seconds: number, opts: AdvanceOptions 
       dt = Math.min(dt, s.untilTakeover, untilAsleep, untilEmpty, untilThere);
       const miles = (mph * dt) / 3600;
       s = stream(s, dt, true);
+      // Passing a sight or a state line is a stream moment.
+      for (const l of LANDMARKS) {
+        if (l.at > s.odometer && l.at <= s.odometer + miles && l.kind !== 'city') s = { ...s, hype: s.hype + 0.5 * s.viewers + 10 };
+      }
       s = {
         ...s,
         odometer: Math.min(TRIP_LENGTH, s.odometer + miles),
@@ -456,6 +551,7 @@ export function advance(state: GameState, seconds: number, opts: AdvanceOptions 
       }
     }
     left -= dt;
+    s = { ...s, clock: s.clock + dt * TIME_SCALE };
   }
   return s;
 }
@@ -520,7 +616,8 @@ function startCrash(s: GameState, kind: string): GameState {
 
 function clearTakeover(s: GameState): GameState {
   const takeovers = s.takeovers + 1;
-  return { ...s, takeover: undefined, takeovers, untilTakeover: takeoverGap(autonomyLevel(s.levels), takeovers) };
+  const gap = takeoverGap(autonomyLevel(s.levels), takeovers) * regionAt(s.odometer).takeovers;
+  return { ...s, takeover: undefined, takeovers, untilTakeover: gap };
 }
 
 /** The player taps the takeover prompt: chat goes wild, tips come in, and Dad relaxes a bit. */
@@ -617,6 +714,7 @@ export function deserialize(raw: string | null, now: number): GameState {
       viewers: num(s.viewers, BASE_VIEWERS, 0),
       hype: num(s.hype, 0, 0),
       followers: num(s.followers, 0, 0),
+      clock: num(s.clock, START_CLOCK, 0),
       untilTakeover: typeof s.untilTakeover === 'number' && s.untilTakeover >= 0 ? s.untilTakeover : takeoverGap(autonomyLevel(levels), takeovers),
       takeovers,
       tiredness: num(s.tiredness, 0, 0, 1),

@@ -7,6 +7,7 @@ import {
   currentLandmark, currentSpeed, deserialize, formatCash, formatNumber, gasPrice, honk, hurryTow, income, isMaxed,
   level, missingRequirements, mpg, newGame, nextLandmark, resolveTakeover, serialize, speed, stopReason,
   takeoverGap, targetViewers, tripProgress, upgradeCost, viewers, type GameState,
+  START_CLOCK, TIME_SCALE, daylight, hourOf, isNight, regionAt,
 } from '../src/game';
 
 /** A game with no takeovers coming, for testing one thing at a time. */
@@ -302,15 +303,62 @@ describe('trip', () => {
   it('tracks real landmarks along the route', () => {
     const s = calm({ odometer: 500 });
     expect(currentLandmark(s).name).toBe('Atlanta, GA');
-    expect(nextLandmark(s)?.name).toBe('Chattanooga, TN');
+    expect(nextLandmark(s)?.name).toBe('Welcome to Tennessee');
     expect(nextLandmark(calm({ odometer: TRIP_LENGTH }))).toBeUndefined();
   });
 
   it('landmarks match the baked map', async () => {
     const route = (await import('../public/map/route.json')).default as { total: number; waypoints: { name: string; s: number }[] };
     expect(TRIP_LENGTH).toBeCloseTo(route.total / 1609.344, 0);
-    expect(LANDMARKS.map((l) => l.name)).toEqual(route.waypoints.map((w) => w.name));
-    route.waypoints.forEach((w, i) => expect(LANDMARKS[i].at).toBeCloseTo(w.s / 1609.344, 0));
+    const cities = LANDMARKS.filter((l) => l.kind === 'city');
+    expect(cities.map((l) => l.name)).toEqual(route.waypoints.map((w) => w.name));
+    route.waypoints.forEach((w, i) => expect(cities[i].at).toBeCloseTo(w.s / 1609.344, 0));
+    for (let i = 1; i < LANDMARKS.length; i++) expect(LANDMARKS[i].at).toBeGreaterThan(LANDMARKS[i - 1].at);
+  });
+
+  it('passing a sight spikes the stream', () => {
+    const s = calm({ odometer: 989.9, followers: 2000, viewers: 70 });
+    const after = advance(s, 60);
+    expect(after.odometer).toBeGreaterThan(990);
+    expect(after.hype).toBeGreaterThan(30);
+  });
+
+  it('scenery changes the audience: Kansas is the grind, the Rockies pay', () => {
+    const at = (odometer: number) => targetViewers(calm({ odometer, followers: 100 }));
+    expect(regionAt(1400).name).toMatch(/Kansas/);
+    expect(at(1400)).toBeLessThan(at(100));
+    expect(at(1890)).toBeGreaterThan(at(100));
+  });
+
+  it('cities ask for help more often', () => {
+    const resolved = (odometer: number) => resolveTakeover(calm({ odometer, takeovers: 5, takeover: { kind: 'merge', waited: 0 } })).untilTakeover;
+    expect(resolved(440)).toBeLessThan(resolved(100));
+  });
+});
+
+describe('day and night', () => {
+  it('the game clock runs faster than real time', () => {
+    const s = advance(calm(), 600);
+    expect(s.clock - START_CLOCK).toBeCloseTo(600 * TIME_SCALE);
+    expect(hourOf(newGame(0))).toBe(8);
+  });
+
+  it('knows night from day, with dawn and dusk', () => {
+    const at = (h: number) => calm({ clock: h * 3600 });
+    expect(isNight(at(23))).toBe(true);
+    expect(isNight(at(2 + 24 * 3))).toBe(true);
+    expect(isNight(at(12))).toBe(false);
+    expect(daylight(at(12))).toBe(1);
+    expect(daylight(at(7))).toBeCloseTo(0.5);
+    expect(daylight(at(1))).toBe(0);
+  });
+
+  it('Dad tires faster at night (until the car can drive at night), and fewer people watch', () => {
+    const night = calm({ clock: 22 * 3600 }), day = calm({ clock: 12 * 3600 });
+    expect(advance(night, 100).tiredness).toBeGreaterThan(advance(day, 100).tiredness);
+    const l4 = { citystreets: 1 };
+    expect(advance({ ...night, levels: l4 }, 100).tiredness).toBeCloseTo(advance({ ...day, levels: l4 }, 100).tiredness);
+    expect(targetViewers(night)).toBeLessThan(targetViewers(day));
   });
 });
 
@@ -345,6 +393,7 @@ describe('saves', () => {
     expect(s.viewers).toBe(BASE_VIEWERS);
     expect(s.tiredness).toBe(0.4);
     expect(s.takeovers).toBe(3);
+    expect(s.clock).toBe(START_CLOCK);
   });
 
   it('loads version 1 saves, moving old upgrades to the sensors that replaced them', () => {

@@ -13,7 +13,9 @@ and the result must be playable in a mobile browser.
 - `src/game.ts`: all game logic as pure functions over `GameState` (no DOM, no timers).
   Put new mechanics here and unit test them in `tests/`. Distances are real route miles and speeds real
   mph (the trip is as long as the drive). Money ($) comes from stream viewers (followers raise the
-  audience, hype spikes fade); gas costs money and Dad fills up when the tank runs dry. Upgrades are
+  audience, hype spikes fade); gas costs money and Dad fills up when the tank runs dry. `LANDMARKS`
+  (cities from the baked map plus sights and state lines) and `REGIONS` (scenery: viewer and takeover
+  multipliers) are placed by route mile; a game clock runs 12x real time for day and night. Upgrades are
   sensors (repeatable), stream gear, driving
   features (one-time, with `requires`) and comfort; features set the autonomy level (L0-L5), which spaces
   out takeovers (the car stops until you tap, or online Dad sorts it out after a while). Dad's

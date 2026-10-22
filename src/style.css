@@ -133,3 +133,17 @@ footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-i
 .away ul { list-style: none; padding: 0; margin: 0 0 10px; display: flex; flex-direction: column; gap: 6px; }
 .away form { margin-top: 12px; }
 .away .honk { width: 100%; }
+.strip { display: block; width: 100%; height: auto; background: var(--panel); border-radius: 12px; }
+.strip .route { fill: none; stroke: #4a5d70; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.strip .driven { fill: none; stroke: var(--good); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+.strip .city { fill: var(--text); }
+.strip .border { fill: var(--muted); }
+.strip .car { fill: var(--accent); stroke: #1d2b3a; stroke-width: 2; }
+.strip .tag { fill: var(--muted); font-size: 11px; }
+.toast {
+  position: absolute; left: 50%; top: 70px; transform: translateX(-50%); z-index: 3; pointer-events: none;
+  background: #f4b942; color: #1d2b3a; font-weight: 800; border-radius: 999px; padding: 6px 14px;
+  white-space: nowrap; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 4px 14px #0007; animation: takeover-in 0.3s ease-out;
+}
+.toast[hidden] { display: none; }

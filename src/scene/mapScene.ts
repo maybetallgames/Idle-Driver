@@ -21,9 +21,9 @@ export interface MapView {
   /**
    * Advance and draw one frame. `routeMeters` is how far along the route the car is,
    * `cones` what the car's sensors cover, `autonomy` the autonomy level (0..5), `crash` the crash in
-   * progress (a new `id` plays the crash animation).
+   * progress (a new `id` plays the crash animation), `daylight` 0 (night) to 1 (day).
    */
-  frame(dt: number, routeMeters: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }): void;
+  frame(dt: number, routeMeters: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }, daylight?: number): void;
   /** Where we are, for the HUD (undefined until the map index has loaded). */
   place(): { s: number; total: number; prev: string; next?: { name: string; s: number } } | undefined;
 }
@@ -49,10 +49,13 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
   const scene = new Scene();
   // Beyond its sensors the car's screen fades to a dark night-blue.
   const sky = new Color(0x16202c);
+  const DAY_SKY = new Color(0x1f3a55), NIGHT_SKY = new Color(0x04070d);
   scene.background = sky;
-  scene.fog = new Fog(sky, 300, 1300);
+  const fog = new Fog(sky, 300, 1300);
+  scene.fog = fog;
   const camera = new PerspectiveCamera(55, 1, 1, 2500);
-  scene.add(new HemisphereLight(0xffffff, 0x8a7f6a, 2.0));
+  const hemi = new HemisphereLight(0xffffff, 0x8a7f6a, 2.0);
+  scene.add(hemi);
   const sun = new DirectionalLight(0xfff2d6, 2.0);
   sun.position.set(-0.5, 1, 0.35);
   scene.add(sun);
@@ -156,8 +159,13 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
   const tint = new Color();
   const v = new Vector3(), ahead = new Vector3();
 
-  function frame(dt: number, routeMeters: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }) {
+  function frame(dt: number, routeMeters: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }, daylight = 1) {
     setCones(cones);
+    // Day and night: dimmer light and a darker sky after dark.
+    hemi.intensity = 0.5 + 1.5 * daylight;
+    sun.intensity = 0.1 + 1.9 * daylight;
+    sky.lerpColors(NIGHT_SKY, DAY_SKY, daylight);
+    fog.color.copy(sky);
     setBlueLaneLines(autonomy >= 2);
     if (!index) { renderer.render(scene, camera); return; }
     const target = Math.min(index.total, opts.mile !== undefined ? opts.mile * 1609.344 : routeMeters);
