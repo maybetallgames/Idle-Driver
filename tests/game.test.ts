@@ -4,6 +4,7 @@ import {
   advance, autonomyLevel, buy, canBuy, catchUp, currentLandmark, currentSpeed, deserialize, formatNumber,
   honk, isMaxed, level, missingRequirements, newGame, nextLandmark, resolveTakeover, serialize, speed,
   takeoverGap, tripProgress, upgradeCost, type GameState,
+  TIRE_RATE, TOW_SECONDS, REPAIR_COST_SECONDS, canBuyCoffee, coffee, coffeeCost, crashChance, crashKind, hurryTow,
 } from '../src/game';
 
 describe('driving', () => {
@@ -116,6 +117,77 @@ describe('takeovers', () => {
     expect(takeoverGap(5, 3)).toBe(Infinity);
     const fsd = advance({ ...newGame(0), levels: { fsd: 1 }, untilTakeover: Infinity }, 1e6);
     expect(fsd.takeover).toBeUndefined();
+  });
+});
+
+describe('tiredness and crashes', () => {
+  it('Dad gets tired driving and rests while stopped', () => {
+    const driven = advance({ ...newGame(0), untilTakeover: 1000 }, 100);
+    expect(driven.tiredness).toBeCloseTo(100 * TIRE_RATE[0]);
+    const stuck = advance({ ...driven, untilTakeover: 0.001 }, 60);
+    expect(stuck.takeover).toBeDefined();
+    expect(stuck.tiredness).toBeLessThan(driven.tiredness);
+  });
+
+  it('higher autonomy tires Dad less, and at L5 not at all', () => {
+    const base = { ...newGame(0), untilTakeover: 1e9 };
+    const l0 = advance(base, 100).tiredness;
+    const l2 = advance({ ...base, levels: { autosteer: 1 } }, 100).tiredness;
+    expect(l2).toBeLessThan(l0);
+    expect(advance({ ...base, levels: { fsd: 1 } }, 1e6).tiredness).toBe(0);
+  });
+
+  it('falling asleep at the wheel crashes the car', () => {
+    const s = advance({ ...newGame(0), untilTakeover: 1e9, miles: 1000, tiredness: 0.99 }, 60);
+    expect(s.crash?.kind).toBe('nodoff');
+    expect(crashKind(s)?.emoji).toBe('😴');
+    expect(s.crashes).toBe(1);
+    expect(s.tiredness).toBeLessThanOrEqual(0.3);
+    expect(currentSpeed(s)).toBe(0);
+  });
+
+  it('a crash costs repairs and the tow truck takes a while (only while you watch)', () => {
+    const s = advance({ ...newGame(0), untilTakeover: 1e9, miles: 1000, tiredness: 1 - 1e-6 }, 1);
+    expect(s.crash).toBeDefined();
+    expect(s.miles).toBeCloseTo(1000 - 0.2 * REPAIR_COST_SECONDS, 3);
+    expect(advance(s, 1e5).crash).toBeDefined(); // offline: waits for you
+    const later = advance(s, TOW_SECONDS + 5, { dadHelps: true });
+    expect(later.crash).toBeUndefined();
+    expect(later.odometer).toBeGreaterThan(s.odometer);
+    expect(hurryTow(s).crash!.left).toBeLessThan(s.crash!.left);
+  });
+
+  it('untapped takeovers sometimes crash, more often when Dad is tired', () => {
+    const count = (tiredness: number) => {
+      let crashes = 0;
+      for (let i = 0; i < 400; i++) {
+        const s: GameState = { ...newGame(0), takeovers: i, tiredness, takeover: { kind: 'deer', waited: 0 }, untilTakeover: 1e9 };
+        if (advance(s, DAD_RESOLVE_SECONDS + 0.1, { dadHelps: true }).crash) crashes++;
+      }
+      return crashes / 400;
+    };
+    const fresh = count(0), tired = count(0.9);
+    expect(fresh).toBeLessThan(0.15);
+    expect(tired).toBeGreaterThan(0.35);
+    expect(crashChance(1)).toBeLessThan(1);
+  });
+
+  it('coffee perks Dad up for a price', () => {
+    const s: GameState = { ...newGame(0), miles: 100, tiredness: 0.8 };
+    expect(canBuyCoffee(s)).toBe(true);
+    const c = coffee(s);
+    expect(c.tiredness).toBeCloseTo(0.3);
+    expect(c.miles).toBe(100 - coffeeCost(s));
+    expect(coffee({ ...s, miles: 0 }).tiredness).toBe(0.8);
+  });
+
+  it('old saves without tiredness load fresh', () => {
+    const s = deserialize(JSON.stringify({ version: 2, odometer: 5, miles: 5, levels: {}, lastTick: 0, untilTakeover: 10, takeovers: 2 }), 0);
+    expect(s.tiredness).toBe(0);
+    expect(s.crashes).toBe(0);
+    expect(s.crash).toBeUndefined();
+    const crashed = advance({ ...s, tiredness: 1 - 1e-6, untilTakeover: 1e9 }, 1);
+    expect(deserialize(serialize(crashed), 0)).toEqual(crashed);
   });
 });
 

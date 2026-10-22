@@ -10,6 +10,7 @@ import { perceives, type Cone } from '../perception';
 import { sensorUniforms, setCones, withSensorView } from './sensorShader';
 import { flat, makeSuv, trafficGeometries } from './models';
 import { buildChunk, setBlueLaneLines, type ChunkMeshes } from './mapMeshes';
+import { createCrashView } from './crashScene';
 
 const TRAFFIC_COUNT = 10;
 const CAR_COLORS = [0xd9d9d9, 0x9aa5b1, 0x3d5a80, 0xe76f51, 0xf4f1de, 0x6d597a, 0x283618, 0xbc4749, 0x1d1d1d];
@@ -19,9 +20,10 @@ const SNAP_GAP = 3000;
 export interface MapView {
   /**
    * Advance and draw one frame. `progress` is 0..1 along the trip, `idleSpeed` in miles/sec,
-   * `cones` what the car's sensors cover, `autonomy` the autonomy level (0..5).
+   * `cones` what the car's sensors cover, `autonomy` the autonomy level (0..5), `crash` the crash in
+   * progress (a new `id` plays the crash animation).
    */
-  frame(dt: number, idleSpeed: number, progress: number, cones: readonly Cone[], autonomy: number): void;
+  frame(dt: number, idleSpeed: number, progress: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }): void;
   /** Where we are, for the HUD (undefined until the map index has loaded). */
   place(): { s: number; total: number; prev: string; next?: { name: string; s: number } } | undefined;
 }
@@ -67,6 +69,9 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
   const boxes = new InstancedMesh(boxGeo, new MeshBasicMaterial({ color: 0x5fd4ff, transparent: true, opacity: 0.28, depthWrite: false }), TRAFFIC_COUNT);
   bodies.frustumCulled = cabins.frustumCulled = boxes.frustumCulled = false;
   scene.add(bodies, cabins, boxes);
+  const crashView = createCrashView(scene);
+  let playedCrash = -1;
+  let crashTime = 0;
 
   const base = new URL('map/', document.baseURI).href;
   let index: RouteIndex | undefined;
@@ -151,7 +156,7 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
   const tint = new Color();
   const v = new Vector3(), ahead = new Vector3();
 
-  function frame(dt: number, _idleSpeed: number, progress: number, cones: readonly Cone[], autonomy: number) {
+  function frame(dt: number, _idleSpeed: number, progress: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }) {
     setCones(cones);
     setBlueLaneLines(autonomy >= 2);
     if (!index) { renderer.render(scene, camera); return; }
@@ -192,6 +197,17 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
     sensorUniforms.uSensorCar.value.copy(suv.position);
     sensorUniforms.uSensorFwd.value.set(p.dx, -p.dy).normalize();
 
+    // Crashes: the same crash id always plays the same tumble (a crash from while you were away replays).
+    if (crash && crash.id !== playedCrash) {
+      playedCrash = crash.id;
+      crashTime = 0;
+      crashView.start(crash.id * 7919 + 13, crash.kind, suv.position, suv.rotation.y);
+    } else if (!crash && crashView.active) {
+      crashView.stop();
+    }
+    suv.visible = !crashView.active;
+    if (crashView.active) { crashView.update(dt); crashTime += dt; }
+
     // Traffic, in lanes of our direction.
     const road = { lanes: p.fwd, playerLane: p.fwd - 1 };
     const vs = Math.max(5, speedEst);
@@ -224,6 +240,13 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
     toScene(back, lateral * 0.5, v, 0);
     v.y = Math.max(v.y, p.h) + 17;
     toScene(fwd, lateral * 0.5, ahead, 0);
+    if (crashView.active) {
+      // Circle the wreck, close in.
+      crashView.focus(ahead);
+      const a = suv.rotation.y + 2.2 + crashTime * 0.35;
+      v.set(ahead.x + Math.sin(a) * 8, ahead.y + 3.5, ahead.z + Math.cos(a) * 8);
+      ahead.y -= 1.8; // look a bit below the wreck so it sits above the crash banner
+    }
     if (!camReady) { camPos.copy(v); camLook.copy(ahead); camReady = true; }
     const ease = Math.min(1, dt * 3);
     camPos.lerp(v, ease);

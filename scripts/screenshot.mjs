@@ -11,10 +11,14 @@ const mile = mileAt >= 0 ? args.splice(mileAt, 2)[1] : undefined;
 // --levels camera:5,radar:2 starts from a save with those upgrades.
 const levelsAt = args.indexOf('--levels');
 const levels = levelsAt >= 0 ? Object.fromEntries(args.splice(levelsAt, 2)[1].split(',').map((p) => [p.split(':')[0], Number(p.split(':')[1])])) : undefined;
-// --miles 5000 starts with that much to spend; --takeover storm starts stuck on that takeover.
+// --miles 5000 starts with that much to spend; --takeover storm starts stuck on that takeover;
+// --crash spin starts in that crash (--wait 4000 picks the moment); --tired 0.7 sets Dad's tiredness.
 const take = (flag) => { const at = args.indexOf(flag); return at >= 0 ? args.splice(at, 2)[1] : undefined; };
 const miles = Number(take('--miles') ?? 0);
 const takeover = take('--takeover');
+const crash = take('--crash');
+const tired = Number(take('--tired') ?? 0);
+const wait = Number(take('--wait') ?? 2500);
 const out = args[0] ?? 'screenshot.png';
 const server = await preview({ preview: { port: 4173, strictPort: false } });
 const url = server.resolvedUrls.local[0];
@@ -25,17 +29,21 @@ try {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  if (levels || miles || takeover) {
-    const save = { version: 2, odometer: 0, miles, levels: levels ?? {}, untilTakeover: 1e6, takeovers: 0, ...(takeover ? { takeover: { kind: takeover, waited: 4 } } : {}) };
+  if (levels || miles || takeover || crash || tired) {
+    const save = {
+      version: 2, odometer: 0, miles, levels: levels ?? {}, untilTakeover: 1e6, takeovers: 0, tiredness: tired, crashes: crash ? 1 : 0,
+      ...(takeover ? { takeover: { kind: takeover, waited: 4 } } : {}),
+      ...(crash ? { crash: { kind: crash, left: 60, cost: 120 } } : {}),
+    };
     await page.addInitScript((s) => localStorage.setItem('idle-driver-save', JSON.stringify({ ...s, lastTick: Date.now() })), save);
   }
   // Fixed traffic seed so screenshots are comparable.
   await page.goto(`${url}?seed=1${mile ? `&mile=${mile}` : ''}`);
 
-  if (!takeover) for (let i = 0; i < 15; i++) await page.click('#honk');
+  if (!takeover && !crash) for (let i = 0; i < 15; i++) await page.click('#honk');
   // Wait for the map around the car to load, then a moment for the camera to settle.
   await page.waitForSelector('#view[data-ready]', { timeout: 90_000 });
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(wait);
   await page.screenshot({ path: out, fullPage: true });
   console.log(`Saved ${out}. place="${await page.textContent('#place')}" miles=${await page.textContent('#miles')}`);
   if (errors.length) {

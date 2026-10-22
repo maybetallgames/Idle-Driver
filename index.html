@@ -19,6 +19,9 @@
         <button id="takeover" class="takeover" hidden>
           <span class="what"></span><span class="ask"></span><span class="timer-bar"><span class="timer"></span></span>
         </button>
+        <button id="crash" class="takeover crash" hidden>
+          <span class="what"></span><span class="ask"></span><span class="timer-bar"><span class="timer"></span></span>
+        </button>
       </div>
 
       <section class="stats">
@@ -32,7 +35,15 @@
         <p id="next" class="muted"></p>
       </section>
 
-      <button id="honk" class="honk">Honk the horn 📯</button>
+      <section class="dad">
+        <span id="dad-face" class="face">😀</span>
+        <div class="dad-meter"><span class="label">Dad's tiredness</span><div class="bar"><div id="tired"></div></div></div>
+      </section>
+
+      <div class="actions">
+        <button id="honk" class="honk">Honk 📯</button>
+        <button id="coffee" class="honk coffee">☕ Coffee<span id="coffee-cost" class="small"></span></button>
+      </div>
 
       <section id="upgrades" class="upgrades"></section>
 

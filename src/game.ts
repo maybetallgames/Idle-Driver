@@ -54,6 +54,40 @@ export const DAD_RESOLVE_SECONDS = 20;
 /** Tapping a takeover is worth this many seconds of driving. */
 export const TAKEOVER_BONUS_SECONDS = 15;
 
+/** Tiredness Dad gains per second of driving, by autonomy level (1 = falls asleep). */
+export const TIRE_RATE = [1 / 400, 1 / 600, 1 / 1000, 1 / 2000, 1 / 5000, 0];
+/** Tiredness Dad loses per second while the car is stopped. */
+export const REST_RATE = 1 / 300;
+/** Helping with a takeover takes this much off Dad's tiredness. */
+export const TAP_REST = 0.08;
+/** Coffee takes this much off, and costs this many seconds of driving. */
+export const COFFEE_REST = 0.5;
+export const COFFEE_COST_SECONDS = 20;
+/** After a crash: seconds until the tow truck has you back on the road, and repairs in seconds of driving. */
+export const TOW_SECONDS = 30;
+export const REPAIR_COST_SECONDS = 30;
+/** Each tap on "hurry the tow truck" takes this many seconds off. */
+export const TOW_TAP_SECONDS = 3;
+
+/** Chance that Dad crashes when he handles a takeover alone. */
+export function crashChance(tiredness: number): number {
+  return 0.05 + 0.6 * tiredness * tiredness;
+}
+
+export interface CrashKind { id: string; emoji: string; name: string }
+export const CRASH_KINDS: readonly CrashKind[] = [
+  { id: 'nodoff', emoji: '😴', name: 'Dad nodded off and rolled into the ditch' },
+  { id: 'rearend', emoji: '🚛', name: 'Bumped a truck and bounced off' },
+  { id: 'spin', emoji: '🌀', name: 'Spun out on the wet road' },
+  { id: 'cones', emoji: '🚧', name: 'Plowed through the construction cones' },
+  { id: 'deer', emoji: '🦌', name: 'Swerved for a deer (the deer is fine)' },
+  { id: 'barrier', emoji: '🎫', name: 'Clipped the toll barrier' },
+];
+/** Which crash each takeover can turn into. */
+const CRASH_FOR_TAKEOVER: Record<string, string> = {
+  construction: 'cones', interchange: 'spin', toll: 'barrier', merge: 'rearend', storm: 'spin', deer: 'deer',
+};
+
 export interface TakeoverKind { id: string; emoji: string; name: string }
 export const TAKEOVER_KINDS: readonly TakeoverKind[] = [
   { id: 'construction', emoji: '🚧', name: 'Construction zone' },
@@ -102,10 +136,16 @@ export interface GameState {
   takeovers: number;
   /** The situation the car is stuck on, if any. While set, the car waits. */
   takeover?: { kind: string; waited: number };
+  /** Dad's tiredness, 0 (fresh) to 1 (asleep at the wheel). */
+  tiredness: number;
+  /** How many crashes so far (seeds the crash animation). */
+  crashes: number;
+  /** A crash in progress: the car waits for the tow truck. Offline, it waits until you return. */
+  crash?: { kind: string; left: number; cost: number };
 }
 
 export function newGame(now: number): GameState {
-  return { version: SAVE_VERSION, odometer: 0, miles: 0, levels: {}, lastTick: now, untilTakeover: takeoverGap(0, 0), takeovers: 0 };
+  return { version: SAVE_VERSION, odometer: 0, miles: 0, levels: {}, lastTick: now, untilTakeover: takeoverGap(0, 0), takeovers: 0, tiredness: 0, crashes: 0 };
 }
 
 /** The highest autonomy level whose features are owned. */
@@ -130,6 +170,10 @@ export function takeoverGap(autonomy: number, count: number): number {
   return TAKEOVER_INTERVAL[autonomy] * (0.6 + 0.8 * hash01(count * 2 + 1));
 }
 
+export function crashKind(state: GameState): CrashKind | undefined {
+  return state.crash && (CRASH_KINDS.find((k) => k.id === state.crash!.kind) ?? CRASH_KINDS[0]);
+}
+
 export function takeoverKind(state: GameState): TakeoverKind | undefined {
   return state.takeover && (TAKEOVER_KINDS.find((k) => k.id === state.takeover!.kind) ?? TAKEOVER_KINDS[0]);
 }
@@ -152,7 +196,7 @@ export function speed(state: GameState): number {
 
 /** How fast the car is going right now: zero while it waits for help. */
 export function currentSpeed(state: GameState): number {
-  return state.takeover ? 0 : speed(state);
+  return state.takeover || state.crash ? 0 : speed(state);
 }
 
 export function upgradeCost(state: GameState, id: string): number {
@@ -196,24 +240,52 @@ export interface AdvanceOptions {
   dadHelps?: boolean;
 }
 
-/** Advance the simulation by `seconds`. Offline (no `dadHelps`), the car stops at a takeover and waits. */
+/**
+ * Advance the simulation by `seconds`. Offline (no `dadHelps`), the car stops at a takeover or a crash
+ * and waits for you; Dad rests while it waits.
+ */
 export function advance(state: GameState, seconds: number, opts: AdvanceOptions = {}): GameState {
   let s = state;
   let left = seconds;
   for (let guard = 0; left > 1e-9 && guard < 10_000; guard++) {
-    if (s.takeover) {
-      if (!opts.dadHelps) break;
-      const wait = Math.min(left, DAD_RESOLVE_SECONDS - s.takeover.waited);
+    if (s.crash || s.takeover) {
+      if (!opts.dadHelps) {
+        s = rest(s, left);
+        break;
+      }
+      if (s.crash) {
+        const wait = Math.min(left, s.crash.left);
+        left -= wait;
+        s = rest(s, wait);
+        s = s.crash!.left - wait <= 1e-9 ? { ...s, crash: undefined } : { ...s, crash: { ...s.crash!, left: s.crash!.left - wait } };
+        continue;
+      }
+      const t = s.takeover!;
+      const wait = Math.min(left, DAD_RESOLVE_SECONDS - t.waited);
       left -= wait;
-      const waited = s.takeover.waited + wait;
-      s = waited >= DAD_RESOLVE_SECONDS - 1e-9 ? clearTakeover(s) : { ...s, takeover: { ...s.takeover, waited } };
+      s = rest(s, wait);
+      const waited = t.waited + wait;
+      if (waited < DAD_RESOLVE_SECONDS - 1e-9) {
+        s = { ...s, takeover: { ...t, waited } };
+        continue;
+      }
+      // Dad handles it alone: the more tired he is, the likelier it ends in a crash.
+      const crashed = hash01(s.takeovers * 2 + 31337) < crashChance(s.tiredness);
+      s = clearTakeover(s);
+      if (crashed) s = startCrash(s, CRASH_FOR_TAKEOVER[t.kind] ?? 'spin');
       continue;
     }
-    const drive = Math.min(left, s.untilTakeover);
+    const rate = TIRE_RATE[autonomyLevel(s.levels)];
+    const untilAsleep = rate > 0 ? (1 - s.tiredness) / rate : Infinity;
+    const drive = Math.min(left, s.untilTakeover, untilAsleep);
     const gained = speed(s) * drive;
     left -= drive;
-    s = { ...s, odometer: s.odometer + gained, miles: s.miles + gained, untilTakeover: s.untilTakeover - drive };
-    if (s.untilTakeover <= 1e-9) {
+    s = {
+      ...s, odometer: s.odometer + gained, miles: s.miles + gained, untilTakeover: s.untilTakeover - drive,
+      tiredness: Math.min(1, s.tiredness + rate * drive),
+    };
+    if (rate > 0 && s.tiredness >= 1 - 1e-9) s = startCrash({ ...s, tiredness: 1 }, 'nodoff');
+    else if (s.untilTakeover <= 1e-9) {
       const kind = TAKEOVER_KINDS[Math.floor(hash01(s.takeovers * 2) * TAKEOVER_KINDS.length)].id;
       s = { ...s, takeover: { kind, waited: 0 } };
     }
@@ -221,16 +293,57 @@ export function advance(state: GameState, seconds: number, opts: AdvanceOptions 
   return s;
 }
 
+function rest(s: GameState, seconds: number): GameState {
+  return { ...s, tiredness: Math.max(0, s.tiredness - REST_RATE * seconds) };
+}
+
+/** Crash: repairs cost miles, the adrenaline wakes Dad up, and the car waits for the tow truck. */
+function startCrash(s: GameState, kind: string): GameState {
+  const cost = Math.min(s.miles, speed(s) * REPAIR_COST_SECONDS);
+  return {
+    ...s,
+    miles: s.miles - cost,
+    tiredness: Math.min(s.tiredness, 0.3),
+    crashes: s.crashes + 1,
+    crash: { kind, left: TOW_SECONDS, cost },
+    takeover: undefined,
+  };
+}
+
 function clearTakeover(s: GameState): GameState {
   const takeovers = s.takeovers + 1;
   return { ...s, takeover: undefined, takeovers, untilTakeover: takeoverGap(autonomyLevel(s.levels), takeovers) };
 }
 
-/** The player taps the takeover prompt: the car gets going again, with a bonus. */
+/** The player taps the takeover prompt: the car gets going again, with a bonus, and Dad relaxes a bit. */
 export function resolveTakeover(state: GameState): GameState {
   if (!state.takeover) return state;
   const gained = speed(state) * TAKEOVER_BONUS_SECONDS;
-  return clearTakeover({ ...state, odometer: state.odometer + gained, miles: state.miles + gained });
+  return clearTakeover({
+    ...state, odometer: state.odometer + gained, miles: state.miles + gained,
+    tiredness: Math.max(0, state.tiredness - TAP_REST),
+  });
+}
+
+/** Tap to hurry the tow truck along. */
+export function hurryTow(state: GameState): GameState {
+  if (!state.crash) return state;
+  const left = state.crash.left - TOW_TAP_SECONDS;
+  return left <= 0 ? { ...state, crash: undefined } : { ...state, crash: { ...state.crash, left } };
+}
+
+export function coffeeCost(state: GameState): number {
+  return Math.max(5, Math.ceil(speed(state) * COFFEE_COST_SECONDS));
+}
+
+export function canBuyCoffee(state: GameState): boolean {
+  return state.tiredness > 0.02 && state.miles >= coffeeCost(state);
+}
+
+/** Buy Dad a coffee. */
+export function coffee(state: GameState): GameState {
+  if (!canBuyCoffee(state)) return state;
+  return { ...state, miles: state.miles - coffeeCost(state), tiredness: Math.max(0, state.tiredness - COFFEE_REST) };
 }
 
 /** Advance to wall-clock `now`, capping offline time. Returns new state and seconds simulated. */
@@ -280,8 +393,12 @@ export function deserialize(raw: string | null, now: number): GameState {
       lastTick: typeof s.lastTick === 'number' ? s.lastTick : now,
       untilTakeover: typeof s.untilTakeover === 'number' && s.untilTakeover >= 0 ? s.untilTakeover : takeoverGap(autonomyLevel(levels), takeovers),
       takeovers,
+      tiredness: typeof s.tiredness === 'number' ? Math.min(1, Math.max(0, s.tiredness)) : 0,
+      crashes: typeof s.crashes === 'number' && s.crashes >= 0 ? Math.floor(s.crashes) : 0,
     };
     if (t && typeof t.kind === 'string') out.takeover = { kind: t.kind, waited: typeof t.waited === 'number' ? t.waited : 0 };
+    const c = s.crash;
+    if (c && typeof c.kind === 'string') out.crash = { kind: c.kind, left: typeof c.left === 'number' ? c.left : TOW_SECONDS, cost: typeof c.cost === 'number' ? c.cost : 0 };
     return out;
   } catch {
     return newGame(now);
