@@ -1,64 +1,150 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DAD_RESOLVE_SECONDS, MAX_OFFLINE_SECONDS, TAKEOVER_BONUS_SECONDS, TAKEOVER_INTERVAL, TRIP_LENGTH, UPGRADES,
-  advance, autonomyLevel, buy, canBuy, catchUp, currentLandmark, currentSpeed, deserialize, formatNumber,
-  honk, isMaxed, level, missingRequirements, newGame, nextLandmark, resolveTakeover, serialize, speed,
-  takeoverGap, tripProgress, upgradeCost, type GameState,
-  TIRE_RATE, TOW_SECONDS, REPAIR_COST_SECONDS, canBuyCoffee, coffee, coffeeCost, crashChance, crashKind, hurryTow,
+  BASE_MPH, BASE_VIEWERS, DAD_RESOLVE_SECONDS, GAS_STOP_SECONDS, LANDMARKS, MAX_MPH, MAX_OFFLINE_SECONDS,
+  QUICK_GAS_STOP_SECONDS, SAVE_VERSION, STATES, TAKEOVER_BONUS_SECONDS, TAKEOVER_INTERVAL, TANK_GALLONS, TIRE_RATE,
+  TOW_SECONDS, TRIP_LENGTH, UPGRADES,
+  advance, arrived, autonomyLevel, buy, canBuy, canBuyCoffee, catchUp, coffee, coffeeCost, crashChance, crashKind,
+  currentLandmark, currentSpeed, deserialize, formatCash, formatNumber, gasPrice, honk, hurryTow, income, isMaxed,
+  level, missingRequirements, mpg, newGame, nextLandmark, resolveTakeover, serialize, speed, stopReason,
+  takeoverGap, targetViewers, tripProgress, upgradeCost, viewers, type GameState,
 } from '../src/game';
 
+/** A game with no takeovers coming, for testing one thing at a time. */
+const calm = (over: Partial<GameState> = {}): GameState => ({ ...newGame(0), untilTakeover: 1e9, ...over });
+
 describe('driving', () => {
-  it('always moves at a small base speed', () => {
-    const s = advance(newGame(0), 10);
-    expect(s.odometer).toBeCloseTo(2);
-    expect(s.miles).toBeCloseTo(2);
+  it('drives real miles at Dad\'s pace', () => {
+    // (L0 Dad nods off after ~400 s, so keep it short.)
+    const s = advance(calm(), 360);
+    expect(s.odometer).toBeCloseTo(BASE_MPH / 10, 3);
+    expect(currentSpeed(s)).toBe(BASE_MPH);
   });
 
-  it('honk gives at least one mile', () => {
-    expect(honk(newGame(0)).miles).toBe(1);
+  it('upgrades add mph and multipliers, up to a top speed', () => {
+    expect(speed(calm({ levels: { radar: 1, acc: 1 } }))).toBeCloseTo((BASE_MPH + 3) * 1.1);
+    expect(speed(calm({ levels: { lidar: 40 } }))).toBe(MAX_MPH);
+  });
+
+  it('stops at the end of the trip', () => {
+    const s = advance(calm({ odometer: TRIP_LENGTH - 1 }), 3600);
+    expect(s.odometer).toBe(TRIP_LENGTH);
+    expect(arrived(s)).toBe(true);
+    expect(stopReason(s)).toBe('arrived');
+    expect(tripProgress(s)).toBe(1);
+  });
+});
+
+describe('stream', () => {
+  it('earns money from viewers the whole time', () => {
+    const s = advance(calm(), 100);
+    expect(s.cash).toBeGreaterThan(newGame(0).cash);
+    expect(s.stats.earned).toBeCloseTo(s.cash - newGame(0).cash);
+    expect(s.followers).toBeGreaterThan(0);
+  });
+
+  it('viewers drift toward the target, and followers raise it', () => {
+    const s = advance(calm({ viewers: 0 }), 600);
+    expect(s.viewers).toBeCloseTo(targetViewers(s), 0);
+    expect(targetViewers(calm({ followers: 100 }))).toBeGreaterThan(targetViewers(calm()));
+  });
+
+  it('stream gear brings more viewers and more $ per viewer', () => {
+    const base = calm();
+    const geared = calm({ levels: { phonecam: 2, merch: 1 } });
+    expect(targetViewers(geared)).toBeGreaterThan(targetViewers(base));
+    expect(income(geared)).toBeGreaterThan(income(base));
+  });
+
+  it('hype fades', () => {
+    const s = advance(calm({ hype: 100 }), 350);
+    expect(s.hype).toBeLessThan(3);
+  });
+
+  it('honking adds a little hype, but not forever', () => {
+    let s = calm();
+    for (let i = 0; i < 100; i++) s = honk(s);
+    expect(s.hype).toBeGreaterThan(0);
+    expect(s.hype).toBeLessThanOrEqual(0.5 * s.viewers + 6);
+    expect(viewers(s)).toBe(s.viewers + s.hype);
+  });
+
+  it('a parked car draws fewer viewers', () => {
+    const s = calm({ takeover: { kind: 'deer', waited: 0 } });
+    expect(targetViewers(s)).toBeLessThan(targetViewers(calm()));
+  });
+});
+
+describe('gas', () => {
+  it('burns gas by the mile', () => {
+    const s = advance(calm(), 360);
+    expect(TANK_GALLONS - s.gas).toBeCloseTo(BASE_MPH / 10 / mpg(s), 5);
+    expect(mpg(calm({ levels: { ecotires: 2 } }))).toBeGreaterThan(mpg(calm()));
+  });
+
+  it('Dad fills up when the tank runs dry, and the stop takes a minute', () => {
+    const s = advance(calm({ gas: 0.001, cash: 100 }), 10);
+    expect(s.refuel).toBeDefined();
+    expect(s.gas).toBeGreaterThan(TANK_GALLONS - 1);
+    expect(s.cash).toBeLessThan(100 - 40);
+    expect(s.stats.fuelSpent).toBeGreaterThan(40);
+    expect(stopReason(s)).toBe('refuel');
+    const later = advance(s, GAS_STOP_SECONDS);
+    expect(later.refuel).toBeUndefined();
+    expect(later.odometer).toBeGreaterThan(s.odometer);
+  });
+
+  it('self-refuel makes gas stops quick', () => {
+    const s = advance(calm({ gas: 0, cash: 100, levels: { selfrefuel: 1 } }), 1);
+    expect(s.refuel!.left).toBeLessThanOrEqual(QUICK_GAS_STOP_SECONDS);
+  });
+
+  it('without money for gas the car waits while the stream earns, then fills up', () => {
+    const broke = calm({ gas: 0, cash: 0 });
+    const s = advance(broke, 5);
+    expect(stopReason(s)).toBe('gas');
+    expect(s.cash).toBeGreaterThan(0);
+    const later = advance(broke, 3 * 3600);
+    expect(later.odometer).toBeGreaterThan(0);
+  });
+
+  it('gas prices change by state', () => {
+    expect(gasPrice(calm())).toBe(STATES[0].gas);
+    expect(gasPrice(calm({ odometer: 1300 }))).toBe(STATES.find((x) => x.code === 'KS')!.gas);
   });
 });
 
 describe('upgrades', () => {
-  it('cannot buy without enough miles', () => {
-    const s = newGame(0);
+  it('cannot buy without enough money', () => {
+    const s = calm({ cash: 0 });
     expect(canBuy(s, 'camera')).toBe(false);
     expect(buy(s, 'camera')).toBe(s);
   });
 
-  it('buying spends miles, raises level, raises speed and next cost', () => {
-    const s = { ...newGame(0), miles: 100 };
+  it('buying spends money, raises level, speed and next cost', () => {
+    const s = calm({ cash: 100 });
     const before = upgradeCost(s, 'camera');
     const after = buy(s, 'camera');
-    expect(after.miles).toBe(100 - before);
+    expect(after.cash).toBe(100 - before);
     expect(level(after, 'camera')).toBe(1);
     expect(speed(after)).toBeGreaterThan(speed(s));
     expect(upgradeCost(after, 'camera')).toBeGreaterThan(before);
-    expect(after.odometer).toBe(s.odometer); // spending doesn't move you backwards
-  });
-
-  it('multiplier upgrades scale flat speed', () => {
-    const s = { ...newGame(0), levels: { radar: 1, snacks: 2 } };
-    expect(speed(s)).toBeCloseTo((0.2 + 3) * 1.2);
-  });
-});
-
-describe('features and autonomy', () => {
-  it('features need their sensors first and are bought once', () => {
-    const s = { ...newGame(0), miles: 1e6 };
-    expect(canBuy(s, 'acc')).toBe(false);
-    expect(missingRequirements(s, 'acc').map(([u, lv]) => [u.id, lv])).toEqual([['radar', 1]]);
-    const withRadar = buy(s, 'radar');
-    expect(canBuy(withRadar, 'acc')).toBe(true);
-    const owned = buy(withRadar, 'acc');
-    expect(level(owned, 'acc')).toBe(1);
-    expect(isMaxed(owned, 'acc')).toBe(true);
-    expect(buy(owned, 'acc')).toBe(owned);
   });
 
   it('every requirement names a real upgrade', () => {
     const ids = new Set(UPGRADES.map((u) => u.id));
     for (const u of UPGRADES) for (const req of Object.keys(u.requires ?? {})) expect(ids.has(req)).toBe(true);
+  });
+});
+
+describe('features and autonomy', () => {
+  it('features need their sensors first and are bought once', () => {
+    const s = calm({ cash: 1e6 });
+    expect(canBuy(s, 'acc')).toBe(false);
+    expect(missingRequirements(s, 'acc').map(([u, lv]) => [u.id, lv])).toEqual([['radar', 1]]);
+    const owned = buy(buy(s, 'radar'), 'acc');
+    expect(level(owned, 'acc')).toBe(1);
+    expect(isMaxed(owned, 'acc')).toBe(true);
+    expect(buy(owned, 'acc')).toBe(owned);
   });
 
   it('autonomy level follows the features owned', () => {
@@ -71,40 +157,38 @@ describe('features and autonomy', () => {
     expect(autonomyLevel({ fsd: 1 })).toBe(5);
   });
 
-  it('features multiply speed', () => {
-    const s = { ...newGame(0), levels: { radar: 1, acc: 1 } };
-    expect(speed(s)).toBeCloseTo((0.2 + 3) * 1.25);
-  });
-
-  it('reaching a new level spaces the next takeover out', () => {
-    const s: GameState = { ...newGame(0), miles: 1e6, levels: { radar: 1 }, untilTakeover: 1 };
-    expect(buy(s, 'acc').untilTakeover).toBeGreaterThan(TAKEOVER_INTERVAL[1] * 0.5);
+  it('reaching a new level is a stream moment and spaces the next takeover out', () => {
+    const s = calm({ cash: 1e6, levels: { radar: 1 }, untilTakeover: 1 });
+    const after = buy(s, 'acc');
+    expect(after.untilTakeover).toBeGreaterThan(TAKEOVER_INTERVAL[1] * 0.5);
+    expect(after.hype).toBeGreaterThan(s.hype + 20);
   });
 });
 
 describe('takeovers', () => {
-  const soon = (s: GameState, t = 5): GameState => ({ ...s, untilTakeover: t });
+  const soon = (t = 5): GameState => calm({ untilTakeover: t });
 
   it('the car stops and waits when it needs help', () => {
-    const s = advance(soon(newGame(0)), 30);
+    const s = advance(soon(), 30);
     expect(s.takeover).toBeDefined();
-    expect(s.odometer).toBeCloseTo(0.2 * 5);
+    expect(s.odometer).toBeCloseTo((BASE_MPH * 5) / 3600);
     expect(currentSpeed(s)).toBe(0);
     expect(advance(s, 1000).odometer).toBe(s.odometer); // offline: waits for you
   });
 
   it('online, Dad sorts it out himself after a while', () => {
-    const s = advance(soon(newGame(0)), 5 + DAD_RESOLVE_SECONDS + 3, { dadHelps: true });
+    const s = advance(soon(), 5 + DAD_RESOLVE_SECONDS + 3, { dadHelps: true });
     expect(s.takeover).toBeUndefined();
     expect(s.takeovers).toBe(1);
-    expect(s.odometer).toBeCloseTo(0.2 * 8);
+    expect(s.odometer).toBeCloseTo((BASE_MPH * 8) / 3600);
   });
 
-  it('tapping resolves it with a bonus and schedules the next one', () => {
-    const stuck = advance(soon(newGame(0)), 10);
+  it('tapping resolves it with tips and hype, and schedules the next one', () => {
+    const stuck = advance(soon(), 10);
     const s = resolveTakeover(stuck);
     expect(s.takeover).toBeUndefined();
-    expect(s.miles - stuck.miles).toBeCloseTo(0.2 * TAKEOVER_BONUS_SECONDS);
+    expect(s.cash - stuck.cash).toBeCloseTo(income(stuck) * TAKEOVER_BONUS_SECONDS);
+    expect(s.hype).toBeGreaterThan(stuck.hype);
     expect(s.untilTakeover).toBe(takeoverGap(0, 1));
     expect(resolveTakeover(s)).toBe(s);
   });
@@ -115,30 +199,29 @@ describe('takeovers', () => {
     for (const g of gaps) expect(g).toBeLessThanOrEqual(TAKEOVER_INTERVAL[2] * 1.4);
     expect(new Set(gaps).size).toBeGreaterThan(10);
     expect(takeoverGap(5, 3)).toBe(Infinity);
-    const fsd = advance({ ...newGame(0), levels: { fsd: 1 }, untilTakeover: Infinity }, 1e6);
-    expect(fsd.takeover).toBeUndefined();
+    const fsd = advance(calm({ levels: { fsd: 1 }, untilTakeover: Infinity, cash: 1e6 }), 1e5);
+    expect(fsd.takeovers).toBe(0);
   });
 });
 
 describe('tiredness and crashes', () => {
   it('Dad gets tired driving and rests while stopped', () => {
-    const driven = advance({ ...newGame(0), untilTakeover: 1000 }, 100);
+    const driven = advance(calm(), 100);
     expect(driven.tiredness).toBeCloseTo(100 * TIRE_RATE[0]);
     const stuck = advance({ ...driven, untilTakeover: 0.001 }, 60);
     expect(stuck.takeover).toBeDefined();
     expect(stuck.tiredness).toBeLessThan(driven.tiredness);
   });
 
-  it('higher autonomy tires Dad less, and at L5 not at all', () => {
-    const base = { ...newGame(0), untilTakeover: 1e9 };
-    const l0 = advance(base, 100).tiredness;
-    const l2 = advance({ ...base, levels: { autosteer: 1 } }, 100).tiredness;
-    expect(l2).toBeLessThan(l0);
-    expect(advance({ ...base, levels: { fsd: 1 } }, 1e6).tiredness).toBe(0);
+  it('autonomy and snacks tire Dad less, and at L5 not at all', () => {
+    const l0 = advance(calm(), 100).tiredness;
+    expect(advance(calm({ levels: { autosteer: 1 } }), 100).tiredness).toBeLessThan(l0);
+    expect(advance(calm({ levels: { snacks: 2 } }), 100).tiredness).toBeLessThan(l0);
+    expect(advance(calm({ levels: { fsd: 1 }, cash: 1e6 }), 1e5).tiredness).toBe(0);
   });
 
   it('falling asleep at the wheel crashes the car', () => {
-    const s = advance({ ...newGame(0), untilTakeover: 1e9, miles: 1000, tiredness: 0.99 }, 60);
+    const s = advance(calm({ cash: 1000, tiredness: 0.99 }), 60);
     expect(s.crash?.kind).toBe('nodoff');
     expect(crashKind(s)?.emoji).toBe('😴');
     expect(s.crashes).toBe(1);
@@ -146,10 +229,14 @@ describe('tiredness and crashes', () => {
     expect(currentSpeed(s)).toBe(0);
   });
 
-  it('a crash costs repairs and the tow truck takes a while (only while you watch)', () => {
-    const s = advance({ ...newGame(0), untilTakeover: 1e9, miles: 1000, tiredness: 1 - 1e-6 }, 1);
+  it('a crash costs repairs, goes viral, and waits for the tow truck (only while you watch)', () => {
+    const before = calm({ cash: 1000, tiredness: 1 - 1e-6 });
+    const s = advance(before, 1);
     expect(s.crash).toBeDefined();
-    expect(s.miles).toBeCloseTo(1000 - 0.2 * REPAIR_COST_SECONDS, 3);
+    expect(s.crash!.cost).toBeGreaterThan(0);
+    expect(s.cash).toBeLessThan(before.cash);
+    expect(s.hype).toBeGreaterThan(before.hype + 10);
+    expect(s.followers).toBeGreaterThan(before.followers + 2);
     expect(advance(s, 1e5).crash).toBeDefined(); // offline: waits for you
     const later = advance(s, TOW_SECONDS + 5, { dadHelps: true });
     expect(later.crash).toBeUndefined();
@@ -161,91 +248,111 @@ describe('tiredness and crashes', () => {
     const count = (tiredness: number) => {
       let crashes = 0;
       for (let i = 0; i < 400; i++) {
-        const s: GameState = { ...newGame(0), takeovers: i, tiredness, takeover: { kind: 'deer', waited: 0 }, untilTakeover: 1e9 };
+        const s = calm({ takeovers: i, tiredness, takeover: { kind: 'deer', waited: 0 } });
         if (advance(s, DAD_RESOLVE_SECONDS + 0.1, { dadHelps: true }).crash) crashes++;
       }
       return crashes / 400;
     };
-    const fresh = count(0), tired = count(0.9);
-    expect(fresh).toBeLessThan(0.15);
-    expect(tired).toBeGreaterThan(0.35);
+    expect(count(0)).toBeLessThan(0.15);
+    expect(count(0.9)).toBeGreaterThan(0.35);
     expect(crashChance(1)).toBeLessThan(1);
   });
 
   it('coffee perks Dad up for a price', () => {
-    const s: GameState = { ...newGame(0), miles: 100, tiredness: 0.8 };
+    const s = calm({ cash: 100, tiredness: 0.8 });
     expect(canBuyCoffee(s)).toBe(true);
     const c = coffee(s);
     expect(c.tiredness).toBeCloseTo(0.3);
-    expect(c.miles).toBe(100 - coffeeCost(s));
-    expect(coffee({ ...s, miles: 0 }).tiredness).toBe(0.8);
-  });
-
-  it('old saves without tiredness load fresh', () => {
-    const s = deserialize(JSON.stringify({ version: 2, odometer: 5, miles: 5, levels: {}, lastTick: 0, untilTakeover: 10, takeovers: 2 }), 0);
-    expect(s.tiredness).toBe(0);
-    expect(s.crashes).toBe(0);
-    expect(s.crash).toBeUndefined();
-    const crashed = advance({ ...s, tiredness: 1 - 1e-6, untilTakeover: 1e9 }, 1);
-    expect(deserialize(serialize(crashed), 0)).toEqual(crashed);
+    expect(c.cash).toBe(100 - coffeeCost(s));
+    expect(coffee({ ...s, cash: 0 }).tiredness).toBe(0.8);
   });
 });
 
 describe('offline progress', () => {
   it('catches up elapsed time', () => {
-    const { state, seconds } = catchUp({ ...newGame(0), untilTakeover: 1000 }, 60_000);
+    const { state, seconds } = catchUp(calm(), 60_000);
     expect(seconds).toBe(60);
-    expect(state.odometer).toBeCloseTo(12);
+    expect(state.odometer).toBeCloseTo((BASE_MPH * 60) / 3600);
     expect(state.lastTick).toBe(60_000);
   });
 
-  it('stops at the first takeover', () => {
-    const { state } = catchUp({ ...newGame(0), untilTakeover: 30 }, 3_600_000);
-    expect(state.odometer).toBeCloseTo(6);
+  it('stops driving at the first takeover, but the stream keeps earning', () => {
+    const { state } = catchUp(calm({ untilTakeover: 30 }), 3_600_000);
+    expect(state.odometer).toBeCloseTo((BASE_MPH * 30) / 3600);
     expect(state.takeover).toBeDefined();
+    expect(state.cash).toBeGreaterThan(newGame(0).cash + 3000 * 0.5 * BASE_VIEWERS * 0.004 * 0.5);
   });
 
   it('caps long absences', () => {
-    const { seconds } = catchUp(newGame(0), 1e12);
-    expect(seconds).toBe(MAX_OFFLINE_SECONDS);
+    expect(catchUp(newGame(0), 1e12).seconds).toBe(MAX_OFFLINE_SECONDS);
   });
 
   it('ignores clocks going backwards', () => {
     expect(catchUp(newGame(1000), 0).seconds).toBe(0);
   });
+
+  it('a long trip at full autonomy fills up along the way', () => {
+    const s = advance(calm({ levels: { fsd: 1, lidar: 10 }, cash: 1e5, untilTakeover: Infinity }), MAX_OFFLINE_SECONDS);
+    expect(s.odometer).toBeGreaterThan(400);
+    expect(s.stats.fuelSpent).toBeGreaterThan(50);
+  });
 });
 
 describe('trip', () => {
-  it('tracks landmarks and progress', () => {
-    const s = { ...newGame(0), odometer: 60 };
-    expect(currentLandmark(s).at).toBe(50);
-    expect(nextLandmark(s)?.at).toBe(300);
-    expect(tripProgress({ ...s, odometer: TRIP_LENGTH * 2 })).toBe(1);
-    expect(nextLandmark({ ...s, odometer: TRIP_LENGTH })).toBeUndefined();
+  it('tracks real landmarks along the route', () => {
+    const s = calm({ odometer: 500 });
+    expect(currentLandmark(s).name).toBe('Atlanta, GA');
+    expect(nextLandmark(s)?.name).toBe('Chattanooga, TN');
+    expect(nextLandmark(calm({ odometer: TRIP_LENGTH }))).toBeUndefined();
+  });
+
+  it('landmarks match the baked map', async () => {
+    const route = (await import('../public/map/route.json')).default as { total: number; waypoints: { name: string; s: number }[] };
+    expect(TRIP_LENGTH).toBeCloseTo(route.total / 1609.344, 0);
+    expect(LANDMARKS.map((l) => l.name)).toEqual(route.waypoints.map((w) => w.name));
+    route.waypoints.forEach((w, i) => expect(LANDMARKS[i].at).toBeCloseTo(w.s / 1609.344, 0));
   });
 });
 
 describe('saves', () => {
   it('round-trips', () => {
-    const s = { ...newGame(5), miles: 42, odometer: 99, levels: { camera: 3 } };
+    const s = advance(calm({ cash: 42, odometer: 99, levels: { camera: 3 } }), 100);
     expect(deserialize(serialize(s), 0)).toEqual(s);
   });
 
-  it('loads version 1 saves, moving old upgrades to the sensors that replaced them', () => {
-    const old = JSON.stringify({ version: 1, odometer: 500, miles: 20, levels: { cruise: 4, tires: 2, snacks: 1, lane: 3 }, lastTick: 9 });
-    const s = deserialize(old, 0);
-    expect(s.version).toBe(2);
-    expect(s.levels).toEqual({ camera: 4, radar: 2, snacks: 1, sidecams: 3 });
-    expect(s.odometer).toBe(500);
-    expect(speed(s)).toBeCloseTo((0.2 + 0.5 * 4 + 3 * 2 + 20 * 3) * 1.1);
-    expect(s.untilTakeover).toBeGreaterThan(0);
-    expect(s.takeovers).toBe(0);
-    expect(s.takeover).toBeUndefined();
+  it('keeps a takeover, crash and gas stop in progress across a reload', () => {
+    const stuck = advance(calm({ untilTakeover: 1 }), 5);
+    expect(deserialize(serialize(stuck), 0)).toEqual(stuck);
+    const crashed = advance(calm({ tiredness: 1 - 1e-6, cash: 50 }), 1);
+    expect(deserialize(serialize(crashed), 0)).toEqual(crashed);
+    const fueling = advance(calm({ gas: 0, cash: 100 }), 1);
+    expect(deserialize(serialize(fueling), 0)).toEqual(fueling);
   });
 
-  it('keeps a takeover in progress across a reload', () => {
-    const stuck = advance({ ...newGame(0), untilTakeover: 1 }, 5);
-    expect(deserialize(serialize(stuck), 0)).toEqual(stuck);
+  it('L5 (no takeovers ever) survives JSON', () => {
+    const s = calm({ levels: { fsd: 1 }, untilTakeover: Infinity });
+    expect(deserialize(serialize(s), 0).untilTakeover).toBe(Infinity);
+  });
+
+  it('loads version 2 saves: same share of the trip, miles become some cash', () => {
+    const old = JSON.stringify({ version: 2, odometer: 7500, miles: 2000, levels: { camera: 4, acc: 1, snacks: 1 }, lastTick: 9, untilTakeover: 12, takeovers: 3, tiredness: 0.4, crashes: 1 });
+    const s = deserialize(old, 0);
+    expect(s.version).toBe(SAVE_VERSION);
+    expect(s.odometer).toBeCloseTo(TRIP_LENGTH * 0.1);
+    expect(s.cash).toBeCloseTo(newGame(0).cash + 100);
+    expect(s.levels).toEqual({ camera: 4, acc: 1, snacks: 1 });
+    expect(s.gas).toBe(TANK_GALLONS);
+    expect(s.viewers).toBe(BASE_VIEWERS);
+    expect(s.tiredness).toBe(0.4);
+    expect(s.takeovers).toBe(3);
+  });
+
+  it('loads version 1 saves, moving old upgrades to the sensors that replaced them', () => {
+    const old = JSON.stringify({ version: 1, odometer: 500, miles: 20, levels: { cruise: 4, tires: 2, snacks: 1, lane: 3, bogus: 2 }, lastTick: 9 });
+    const s = deserialize(old, 0);
+    expect(s.levels).toEqual({ camera: 4, radar: 2, snacks: 1, sidecams: 3 });
+    expect(s.untilTakeover).toBeGreaterThan(0);
+    expect(s.tiredness).toBe(0);
   });
 
   it('falls back to a new game on bad data', () => {
@@ -255,10 +362,15 @@ describe('saves', () => {
   });
 });
 
-describe('formatNumber', () => {
+describe('formatting', () => {
   it.each([
     [0, '0.0'], [5.55, '5.5'], [999, '999'], [1500, '1.50K'], [25_000, '25.0K'], [3_200_000, '3.20M'],
   ])('%d -> %s', (n, out) => {
     expect(formatNumber(n)).toBe(out);
+  });
+
+  it('formats money', () => {
+    expect(formatCash(3.456)).toBe('$3.46');
+    expect(formatCash(1500)).toBe('$1.50K');
   });
 });
