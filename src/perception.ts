@@ -31,6 +31,7 @@ export const SENSORS: readonly SensorSpec[] = [
   { id: 'camera', dir: 0, half: 28 * deg, baseRange: 45, rangePerLevel: 6, maxRange: 160 },
   { id: 'radar', dir: 0, half: 9 * deg, baseRange: 90, rangePerLevel: 10, maxRange: 260 },
   { id: 'sidecams', dir: 0, half: 180 * deg, baseRange: 22, rangePerLevel: 3, maxRange: 70 },
+  { id: 'lidar', dir: 0, half: 180 * deg, baseRange: 60, rangePerLevel: 12, maxRange: 180 },
 ];
 
 /** With no sensors at all, Dad only has the headlights. */

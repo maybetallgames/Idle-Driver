@@ -32,6 +32,26 @@ h1 { margin: 0; font-size: 1.6rem; }
 }
 .place:empty { display: none; }
 .place { background: #1d2b3a99; border-radius: 8px; padding: 4px 8px; right: auto; text-shadow: none; }
+.autonomy {
+  position: absolute; right: 8px; top: 8px; z-index: 1; pointer-events: none;
+  background: #1d2b3acc; border: 1px solid #5fd4ff88; color: #bfefff; border-radius: 8px;
+  padding: 4px 8px; font-size: 0.75rem; font-weight: 700;
+}
+.place { max-width: calc(100% - 150px); }
+.takeover {
+  position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--accent); color: #1d2b3a; border: 0; border-radius: 12px; padding: 10px 12px 12px;
+  box-shadow: 0 4px 16px #0008; animation: takeover-in 0.25s ease-out, takeover-pulse 1.2s ease-in-out 0.25s infinite;
+}
+.takeover[hidden] { display: none; }
+.takeover .what { font-size: 1.1rem; font-weight: 800; }
+.takeover .ask { font-size: 0.85rem; font-weight: 600; }
+.takeover .timer-bar { align-self: stretch; height: 4px; margin-top: 6px; background: #1d2b3a33; border-radius: 2px; overflow: hidden; }
+.takeover .timer { display: block; height: 100%; background: #1d2b3a; }
+.takeover:active { transform: scale(0.97); }
+@keyframes takeover-in { from { transform: translateY(20px); opacity: 0; } }
+@keyframes takeover-pulse { 50% { box-shadow: 0 4px 24px #f4b942cc; } }
 .view-status { top: 45%; text-align: center; font-size: 1rem; }
 .view.no-webgl { display: grid; place-items: center; padding: 16px; color: #1d2b3a; text-align: center; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -49,6 +69,10 @@ button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulat
 }
 .honk:active { transform: scale(0.97); }
 .upgrades { display: flex; flex-direction: column; gap: 8px; }
+.upgrades h2 { margin: 8px 0 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.upgrade.owned { opacity: 0.75; border-color: transparent; }
+.upgrade.owned .cost { color: var(--good); }
+.upgrade.locked .desc { color: #e8a0a0; }
 .upgrade {
   display: flex; justify-content: space-between; align-items: center; gap: 12px;
   background: var(--panel); border: 2px solid transparent; border-radius: 10px;
