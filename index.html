@@ -32,6 +32,15 @@
           <span class="what"></span><span class="ask"></span><span class="timer-bar"><span class="timer"></span></span>
         </button>
       </div>
+      <p id="hint" class="hint" hidden></p>
+
+      <section id="ending" class="ending" hidden>
+        <h2>🏔️ You made it to the Rockies!</h2>
+        <p class="muted">Sunset at the overlook in Rocky Mountain National Park. The family piles out to watch.</p>
+        <ul id="summary" class="summary"></ul>
+        <div class="chat" aria-label="Stream chat"><ul id="chat"></ul></div>
+        <button id="new-trip" class="honk">Start a new trip 🚙</button>
+      </section>
 
       <section class="trip">
         <svg id="strip" class="strip" viewBox="0 0 360 115" aria-label="The route from Orlando to the Rockies"></svg>
@@ -66,6 +75,7 @@
       <footer>
         <span id="build" class="muted"></span>
         <span class="muted credits">Map © OpenStreetMap contributors, OpenFreeMap · terrain AWS/USGS · land cover USGS NLCD</span>
+        <button id="mute" class="link">🔊 Sound on</button>
         <button id="reset" class="link">Reset trip</button>
       </footer>
     </main>

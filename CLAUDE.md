@@ -20,7 +20,11 @@ and the result must be playable in a mobile browser.
   features (one-time, with `requires`) and comfort; features set the autonomy level (L0-L5), which spaces
   out takeovers (the car stops until you tap, or online Dad sorts it out after a while). Dad's
   tiredness rises while driving (slower at higher autonomy); untapped takeovers and falling asleep
-  cause crashes (repair cost + tow wait).
+  cause crashes (repair cost + tow wait). `hint()` gives new players a tip; `tripSummary()` fills the
+  ending card. `tests/balance.test.ts` simulates a player and checks the trip takes about a week.
+- `src/sound.ts`: tiny WebAudio sound effects (no files), muted via the footer toggle.
+- The ending: on arrival `mapScene` fades out the sensor view to a sunset at the overlook with the
+  family beside the SUV, and `main.ts` shows the trip summary, a stream chat, and "Start a new trip".
 - `src/crashSim.ts`: the cartoon crash, simulated with cannon-es (only during crashes) and precomputed
   per frame; deterministic per seed. `src/scene/crashScene.ts` plays it with a see-through SUV and
   the family tumbling inside.

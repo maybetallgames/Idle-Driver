@@ -49,8 +49,8 @@ export const UPGRADES: readonly Upgrade[] = [
   { id: 'autosteer', kind: 'feature', name: 'Autosteer', description: 'Cruise and lane keeping together. Lane lines turn blue. +15% speed', baseCost: 1500, costGrowth: 1, per: { speed: 0.15, rest: 0.3 }, max: 1, requires: { acc: 1, lanekeep: 1, camera: 5 } },
   { id: 'lanechange', kind: 'feature', name: 'Auto Lane Change', description: 'Passes slow traffic on its own. +10% speed', baseCost: 8000, costGrowth: 1, per: { speed: 0.1 }, max: 1, requires: { autosteer: 1, sidecams: 1 } },
   { id: 'navhwy', kind: 'feature', name: 'Navigate on Highway', description: 'Takes exits and merges itself. +15% speed', baseCost: 30000, costGrowth: 1, per: { speed: 0.15 }, max: 1, requires: { lanechange: 1, radar: 5 } },
-  { id: 'citystreets', kind: 'feature', name: 'City Streets', description: 'Drives through cities and at night. +15% speed', baseCost: 100000, costGrowth: 1, per: { speed: 0.15 }, max: 1, requires: { navhwy: 1, lidar: 1 } },
-  { id: 'fsd', kind: 'feature', name: 'Full Self Driving', description: 'No driver needed. Dad naps in the back. +20% speed', baseCost: 400000, costGrowth: 1, per: { speed: 0.2 }, max: 1, requires: { citystreets: 1, lidar: 4, camera: 15 } },
+  { id: 'citystreets', kind: 'feature', name: 'City Streets', description: 'Drives through cities and at night. +15% speed', baseCost: 300000, costGrowth: 1, per: { speed: 0.15 }, max: 1, requires: { navhwy: 1, lidar: 1 } },
+  { id: 'fsd', kind: 'feature', name: 'Full Self Driving', description: 'No driver needed. Dad naps in the back. +20% speed', baseCost: 700000, costGrowth: 1, per: { speed: 0.2 }, max: 1, requires: { citystreets: 1, lidar: 4, camera: 15 } },
   { id: 'selfrefuel', kind: 'feature', name: 'Self-Park & Refuel', description: 'Gas stops take seconds instead of a minute', baseCost: 3000, costGrowth: 1, per: {}, max: 1, requires: { sidecams: 1 } },
   // Comfort.
   { id: 'snacks', kind: 'comfort', name: 'Snack Cooler', description: 'Happy kids, calmer Dad: he tires 15% slower', baseCost: 60, costGrowth: 1.6, per: { rest: 0.15 } },
@@ -79,10 +79,17 @@ export const AUTONOMY = [
 /** Dad's own pace, and the fastest the family will ever go. */
 export const BASE_MPH = 25;
 export const MAX_MPH = 85;
+/** Top speed at each autonomy level: Dad won't go fast, the computer gets braver. */
+export const SPEED_CAP = [35, 45, 55, 65, 75, MAX_MPH];
 
 // ---- Takeovers ----
 /** Average seconds of driving between takeovers at each autonomy level (L5 never asks). */
 export const TAKEOVER_INTERVAL = [40, 75, 150, 360, 1200, Infinity];
+/**
+ * While you're away, the car gets itself through this share of tricky spots at each autonomy level
+ * (the rest stop it until you come back). This is what makes autonomy the idle multiplier.
+ */
+export const AUTO_HANDLE = [0.87, 0.972, 0.95, 0.94, 0.9, 1];
 /** Online, Dad sorts a takeover out himself after this many seconds if you don't tap. */
 export const DAD_RESOLVE_SECONDS = 20;
 /** Tapping a takeover is worth this many seconds of stream income. */
@@ -90,7 +97,7 @@ export const TAKEOVER_BONUS_SECONDS = 15;
 
 // ---- Dad ----
 /** Tiredness Dad gains per second of driving, by autonomy level (1 = falls asleep). */
-export const TIRE_RATE = [1 / 400, 1 / 600, 1 / 1000, 1 / 2000, 1 / 5000, 0];
+export const TIRE_RATE = [1 / 900, 1 / 2400, 1 / 5400, 1 / 14400, 1 / 43200, 0];
 /** Tiredness Dad loses per second while the car is stopped. */
 export const REST_RATE = 1 / 300;
 /** Helping with a takeover takes this much off Dad's tiredness. */
@@ -120,7 +127,9 @@ export const FOLLOW_RATE = 0.0008;
 const VIEWER_TAU = 30;
 const HYPE_TAU = 90;
 /** Parked (stuck, crashed, refueling) streams are less interesting. */
-const PARKED_VIEWERS = 0.6;
+export const PARKED_VIEWERS = 0.6;
+/** A car stuck for hours with nobody to help (offline) streams to almost no one. */
+export const STALLED_VIEWERS = 0.15;
 
 // ---- Gas ----
 export const TANK_GALLONS = 14;
@@ -287,6 +296,8 @@ export interface Stats {
   fuelSpent: number;
   gallons: number;
   peakViewers: number;
+  /** Day of the trip (1 = first) the car first steered itself (L2), if it has. */
+  autopilotDay?: number;
 }
 
 export interface GameState {
@@ -376,11 +387,47 @@ export function takeoverKind(state: GameState): Chance | undefined {
 
 /** Cruising speed in mph with the upgrades owned. */
 export function speed(state: GameState): number {
-  return Math.min(MAX_MPH, (BASE_MPH + effect(state.levels, 'mph')) * (1 + effect(state.levels, 'speed')));
+  const cap = SPEED_CAP[autonomyLevel(state.levels)];
+  return Math.min(cap, (BASE_MPH + effect(state.levels, 'mph')) * (1 + effect(state.levels, 'speed')));
 }
 
 export function arrived(state: GameState): boolean {
   return state.odometer >= TRIP_LENGTH - 1e-9;
+}
+
+/** Day of the trip, starting at 1. */
+export function tripDay(state: GameState): number {
+  return Math.floor(state.clock / DAY) + 1;
+}
+
+/** The end-of-trip summary, as [emoji, label, value] rows. */
+export function tripSummary(state: GameState): [string, string, string][] {
+  const days = (state.clock - START_CLOCK) / DAY;
+  const rows: [string, string, string][] = [
+    ['🛣️', 'Miles driven', Math.round(state.odometer).toLocaleString('en-US')],
+    ['📅', 'Days on the road', days < 1 ? `${Math.max(1, Math.round(days * 24))} hours` : `${days.toFixed(1)} days`],
+    ['👀', 'Peak viewers', formatNumber(state.stats.peakViewers)],
+    ['💥', 'Crashes', String(state.crashes)],
+    ['💵', 'Stream earned', formatCash(state.stats.earned)],
+    ['⛽', 'Gas', `${formatNumber(state.stats.gallons)} gal · ${formatCash(state.stats.fuelSpent)}`],
+  ];
+  const day = state.stats.autopilotDay;
+  rows.push(['🤖', 'Car first steered itself', day === undefined ? 'never (Dad did it all!)' : `day ${day}`]);
+  return rows;
+}
+
+/** A short tip for what to do next, or undefined when the player knows the ropes. */
+export function hint(state: GameState): string | undefined {
+  if (arrived(state)) return undefined;
+  if (state.crash) return 'Tap the crash banner to hurry the tow truck.';
+  if (state.takeover) return 'The car is stuck! Tap the banner to help.';
+  if (!level(state, 'camera')) return state.cash >= upgradeCost(state, 'camera')
+    ? 'Buy a Camera so the car can see the road.'
+    : 'The stream is earning money. Honk to hype the chat!';
+  if (state.tiredness > 0.6 && autonomyLevel(state.levels) < 5) return 'Dad is getting sleepy. Buy him a coffee ☕ or tap takeovers.';
+  if (!level(state, 'mount')) return 'Check the Stream tab: better gear brings more viewers.';
+  if (autonomyLevel(state.levels) === 0) return 'Get a Radar to unlock Adaptive Cruise, the first driving feature.';
+  return undefined;
 }
 
 /** Why the car isn't moving, if it isn't. */
@@ -426,9 +473,9 @@ export function payoutRate(state: GameState): number {
 }
 
 /** Where the steady audience is heading. */
-export function targetViewers(state: GameState, moving = !stopReason(state)): number {
+export function targetViewers(state: GameState, activity = stopReason(state) ? PARKED_VIEWERS : 1): number {
   return (BASE_VIEWERS + FOLLOWER_PULL * Math.sqrt(state.followers)) * viewerMul(state)
-    * regionAt(state.odometer).viewers * (isNight(state) ? NIGHT_VIEWERS : 1) * (moving ? 1 : PARKED_VIEWERS);
+    * regionAt(state.odometer).viewers * (isNight(state) ? NIGHT_VIEWERS : 1) * activity;
 }
 
 /** $ per second right now. */
@@ -465,9 +512,12 @@ export function buy(state: GameState, id: string): GameState {
   const after = autonomyLevel(levels);
   const bought = { ...state, cash: state.cash - upgradeCost(state, id), levels };
   if (after <= before) return bought;
+  const stats = after >= 2 && bought.stats.autopilotDay === undefined
+    ? { ...bought.stats, autopilotDay: tripDay(state) } : bought.stats;
   // A new autonomy level is a big stream moment, and spaces takeovers out right away.
   return {
     ...bought,
+    stats,
     hype: bought.hype + 3 * bought.viewers + 30,
     untilTakeover: Math.max(state.untilTakeover, takeoverGap(after, state.takeovers)),
   };
@@ -491,14 +541,15 @@ export function advance(state: GameState, seconds: number, opts: AdvanceOptions 
   let left = seconds;
   for (let guard = 0; left > 1e-9 && guard < 100_000; guard++) {
     let dt = Math.min(left, STEP);
+    const waiting = opts.dadHelps ? PARKED_VIEWERS : STALLED_VIEWERS;
     if (s.crash) {
       if (opts.dadHelps) dt = Math.min(dt, s.crash.left);
-      s = rest(stream(s, dt, false), dt);
+      s = rest(stream(s, dt, waiting), dt);
       if (opts.dadHelps) s = s.crash!.left - dt <= 1e-9 ? { ...s, crash: undefined } : { ...s, crash: { ...s.crash!, left: s.crash!.left - dt } };
     } else if (s.takeover) {
       const t = s.takeover;
       if (opts.dadHelps) dt = Math.min(dt, DAD_RESOLVE_SECONDS - t.waited);
-      s = rest(stream(s, dt, false), dt);
+      s = rest(stream(s, dt, waiting), dt);
       if (opts.dadHelps) {
         const waited = t.waited + dt;
         if (waited < DAD_RESOLVE_SECONDS - 1e-9) s = { ...s, takeover: { ...t, waited } };
@@ -511,16 +562,16 @@ export function advance(state: GameState, seconds: number, opts: AdvanceOptions 
       }
     } else if (s.refuel) {
       dt = Math.min(dt, s.refuel.left);
-      s = rest(stream(s, dt, false), dt);
+      s = rest(stream(s, dt, PARKED_VIEWERS), dt);
       s = s.refuel!.left - dt <= 1e-9 ? { ...s, refuel: undefined } : { ...s, refuel: { left: s.refuel!.left - dt } };
     } else if (arrived(s)) {
-      s = rest(stream(s, dt, false), dt);
+      s = rest(stream(s, dt, waiting), dt);
     } else if (s.gas <= 1e-9) {
       const filled = fillUp(s);
       if (filled !== s) { s = filled; continue; }
       // Not enough money for gas: parked, the stream earns until Dad can fill up.
       dt = Math.min(dt, 5);
-      s = rest(stream(s, dt, false), dt);
+      s = rest(stream(s, dt, PARKED_VIEWERS), dt);
     } else {
       const mph = speed(s);
       const auto = autonomyLevel(s.levels);
@@ -531,7 +582,7 @@ export function advance(state: GameState, seconds: number, opts: AdvanceOptions 
       const untilThere = ((TRIP_LENGTH - s.odometer) / mph) * 3600;
       dt = Math.min(dt, s.untilTakeover, untilAsleep, untilEmpty, untilThere);
       const miles = (mph * dt) / 3600;
-      s = stream(s, dt, true);
+      s = stream(s, dt, 1);
       // Passing a sight or a state line is a stream moment.
       for (const l of LANDMARKS) {
         if (l.at > s.odometer && l.at <= s.odometer + miles && l.kind !== 'city') s = { ...s, hype: s.hype + 0.5 * s.viewers + 10 };
@@ -546,8 +597,11 @@ export function advance(state: GameState, seconds: number, opts: AdvanceOptions 
       };
       if (rate > 0 && s.tiredness >= 1 - 1e-9) s = startCrash({ ...s, tiredness: 1 }, 'nodoff');
       else if (s.untilTakeover <= 1e-9 && !arrived(s)) {
-        const kind = TAKEOVER_KINDS[Math.floor(hash01(s.takeovers * 2) * TAKEOVER_KINDS.length)].id;
-        s = { ...s, takeover: { kind, waited: 0 } };
+        if (!opts.dadHelps && hash01(s.takeovers * 2 + 999) < AUTO_HANDLE[auto]) s = clearTakeover(s);
+        else {
+          const kind = TAKEOVER_KINDS[Math.floor(hash01(s.takeovers * 2) * TAKEOVER_KINDS.length)].id;
+          s = { ...s, takeover: { kind, waited: 0 } };
+        }
       }
     }
     left -= dt;
@@ -557,8 +611,8 @@ export function advance(state: GameState, seconds: number, opts: AdvanceOptions 
 }
 
 /** Viewers drift toward their target, hype fades, money and followers come in. */
-function stream(s: GameState, dt: number, moving: boolean): GameState {
-  const target = targetViewers(s, moving);
+function stream(s: GameState, dt: number, activity: number): GameState {
+  const target = targetViewers(s, activity);
   const ev = Math.exp(-dt / VIEWER_TAU), eh = Math.exp(-dt / HYPE_TAU);
   const v = target + (s.viewers - target) * ev;
   const h = s.hype * eh;
@@ -733,6 +787,7 @@ export function deserialize(raw: string | null, now: number): GameState {
       earned: num(st.earned, 0, 0), fuelSpent: num(st.fuelSpent, 0, 0), gallons: num(st.gallons, 0, 0),
       peakViewers: num(st.peakViewers, BASE_VIEWERS, 0),
     };
+    if (typeof st.autopilotDay === 'number' && st.autopilotDay >= 1) out.stats.autopilotDay = Math.floor(st.autopilotDay);
     return out;
   } catch {
     return newGame(now);
