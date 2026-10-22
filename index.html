@@ -24,6 +24,7 @@
         <div id="autonomy" class="autonomy"></div>
         <div id="speedo" class="speedo"></div>
         <div id="status" class="status" hidden></div>
+        <div id="toast" class="toast" hidden></div>
         <button id="takeover" class="takeover" hidden>
           <span class="what"></span><span class="ask"></span><span class="timer-bar"><span class="timer"></span></span>
         </button>
@@ -33,7 +34,7 @@
       </div>
 
       <section class="trip">
-        <div class="bar"><div id="progress"></div></div>
+        <svg id="strip" class="strip" viewBox="0 0 360 115" aria-label="The route from Orlando to the Rockies"></svg>
         <p id="landmark"></p>
         <p id="next" class="muted"></p>
       </section>

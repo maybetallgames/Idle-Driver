@@ -4,8 +4,10 @@ import {
   advance, autonomyLevel, buy, canBuy, canBuyCoffee, catchUp, coffee, coffeeCost, crashKind, currentLandmark,
   currentSpeed, deserialize, formatCash, formatNumber, gasPrice, honk, hurryTow, income, isMaxed, level,
   missingRequirements, newGame, nextLandmark, resolveTakeover, serialize, stateAt, stopReason, takeoverKind,
-  tripProgress, upgradeCost, viewers, type GameState, type UpgradeKind,
+  upgradeCost, viewers, type GameState, type UpgradeKind,
+  LANDMARKS, STATES, daylight, hourOf, isNight, regionAt, DAY,
 } from './game';
+import { buildStrip, type Strip } from './map/strip';
 import { createMapView } from './scene/mapScene';
 import { sensorCones } from './perception';
 
@@ -58,6 +60,55 @@ function stopText(s: GameState, away = false): string {
     case 'arrived': return '🏔️ You made it to the mountains!';
     default: return away ? '✅ Still rolling.' : '';
   }
+}
+
+// The route strip: drawn once the route's overview line has loaded.
+const SVG = 'http://www.w3.org/2000/svg';
+let strip: Strip | undefined;
+const stripEl = $('strip') as unknown as SVGSVGElement;
+const svg = (tag: string, attrs: Record<string, string | number>, parent: Element = stripEl) => {
+  const el = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+  parent.appendChild(el);
+  return el;
+};
+let driven: SVGElement | undefined, carDot: SVGElement | undefined;
+fetch(new URL('map/route.json', document.baseURI))
+  .then((r) => r.json())
+  .then((route: { overview: [number, number][] }) => {
+    strip = buildStrip(route.overview, TRIP_LENGTH, 360, 115, 14);
+    svg('path', { d: strip.path, class: 'route', pathLength: 1 });
+    driven = svg('path', { d: strip.path, class: 'driven', pathLength: 1, 'stroke-dasharray': '0 2' });
+    for (const st of STATES.slice(1)) {
+      const [x, y] = strip.at(st.at);
+      svg('circle', { cx: x, cy: y, r: 1.6, class: 'border' });
+    }
+    for (const l of LANDMARKS.filter((x) => x.kind === 'city')) {
+      const [x, y] = strip.at(l.at);
+      svg('circle', { cx: x, cy: y, r: 2.6, class: 'city' });
+    }
+    const [sx, sy] = strip.at(0), [ex, ey] = strip.at(TRIP_LENGTH);
+    svg('text', { x: sx - 4, y: sy + 12, class: 'tag', 'text-anchor': 'end' }).textContent = 'Orlando';
+    svg('text', { x: ex + 4, y: ey - 6, class: 'tag' }).textContent = 'Rockies 🏔️';
+    carDot = svg('circle', { r: 5, class: 'car' });
+  })
+  .catch(() => { /* the strip is optional */ });
+
+/** Pops a short message over the view. */
+let toastTimer = 0;
+function toast(text: string) {
+  const el = $('toast');
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => { el.hidden = true; }, 4500);
+}
+let nextName = nextLandmark(state)?.name;
+
+function clockText(s: GameState): string {
+  const h = hourOf(s), hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
+  const h12 = ((hh + 11) % 12) + 1;
+  return `${isNight(s) ? '🌙' : '☀️'} ${h12}:${String(mm).padStart(2, '0')} ${hh < 12 ? 'AM' : 'PM'} · day ${Math.floor(s.clock / DAY) + 1}`;
 }
 
 // ?seed=123 fixes the traffic so screenshots are reproducible; ?mile=430 shows a spot on the route.
@@ -117,7 +168,7 @@ function render() {
   gas.style.width = `${((state.gas / TANK_GALLONS) * 100).toFixed(1)}%`;
   gas.style.background = state.gas < TANK_GALLONS * 0.15 ? '#e5484d' : 'var(--accent)';
   $('gas-text').textContent = `$${gasPrice(state).toFixed(2)}/gal`;
-  $('speedo').textContent = `${Math.round(currentSpeed(state))} mph`;
+  $('speedo').textContent = `${Math.round(currentSpeed(state))} mph · ${clockText(state)}`;
 
   const auto = autonomyLevel(state.levels);
   $('autonomy').textContent = `L${auto} · ${AUTONOMY[auto].name}`;
@@ -148,12 +199,24 @@ function render() {
   $('coffee-cost').textContent = formatCash(coffeeCost(state));
   coffeeBtn.disabled = !canBuyCoffee(state);
 
-  $('progress').style.width = `${(tripProgress(state) * 100).toFixed(2)}%`;
-  $('landmark').textContent = `📍 Mile ${Math.floor(state.odometer).toLocaleString()} of ${Math.round(TRIP_LENGTH).toLocaleString()} · ${stateAt(state.odometer).code} · last city: ${currentLandmark(state).name}`;
+  if (strip && driven && carDot) {
+    driven.setAttribute('stroke-dasharray', `${strip.drawnShare(state.odometer)} 2`);
+    const [x, y] = strip.at(state.odometer);
+    carDot.setAttribute('cx', x.toFixed(1));
+    carDot.setAttribute('cy', y.toFixed(1));
+  }
+  const region = regionAt(state.odometer);
+  const mul = region.viewers * (isNight(state) ? 0.85 : 1);
+  $('landmark').textContent = `📍 Mile ${Math.floor(state.odometer).toLocaleString()} of ${Math.round(TRIP_LENGTH).toLocaleString()} · ${stateAt(state.odometer).code} · ${region.name} (viewers ×${mul.toFixed(2)})`;
   const next = nextLandmark(state);
   $('next').textContent = next
-    ? `Next: ${next.name} in ${formatNumber(next.at - state.odometer)} miles`
+    ? `Next: ${next.emoji} ${next.name} in ${formatNumber(next.at - state.odometer)} miles · last: ${currentLandmark(state).name}`
     : 'You made it to the mountains! 🏔️';
+  if (next?.name !== nextName) {
+    const passed = LANDMARKS.filter((l) => l.at <= state.odometer).pop();
+    if (passed && nextName !== undefined) toast(`${passed.emoji} ${passed.name}!${passed.kind === 'city' ? '' : ' Chat goes wild.'}`);
+    nextName = next?.name;
+  }
   const where = roadScene.place();
   if (where) {
     const toNext = where.next ? ` · ${where.next.name} in ${formatNumber((where.next.s - where.s) / 1609.344)} mi` : '';
@@ -182,7 +245,7 @@ function frame(t: number) {
   if (state.takeover && !wasStuck) navigator.vibrate?.(60);
   if (state.crash && !wasCrashed) navigator.vibrate?.([80, 60, 200]);
   roadScene.frame(Math.min(dt, 0.1), state.odometer * 1609.344, sensorCones(state.levels), autonomyLevel(state.levels),
-    state.crash && { id: state.crashes, kind: state.crash.kind });
+    state.crash && { id: state.crashes, kind: state.crash.kind }, daylight(state));
   render();
   if (t - lastSave > 5000) { save(); lastSave = t; }
   requestAnimationFrame(frame);
