@@ -2,7 +2,7 @@ import './style.css';
 import {
   AUTONOMY, DAD_RESOLVE_SECONDS, UPGRADES, advance, autonomyLevel, buy, canBuy, catchUp, currentLandmark,
   currentSpeed, deserialize, formatNumber, honk, isMaxed, level, missingRequirements, newGame, nextLandmark,
-  resolveTakeover, serialize, takeoverKind, tripProgress, upgradeCost, type GameState, type UpgradeKind,
+  resolveTakeover, serialize, takeoverKind, crashKind, coffee, coffeeCost, canBuyCoffee, hurryTow, TOW_SECONDS, tripProgress, upgradeCost, type GameState, type UpgradeKind,
 } from './game';
 import { createMapView } from './scene/mapScene';
 import { sensorCones } from './perception';
@@ -29,7 +29,10 @@ function welcomeBack(delay = 0) {
   state = result.state;
   if (result.seconds <= 60) return;
   const k = takeoverKind(state);
-  const stop = k ? ` Then it stopped at a ${k.name.toLowerCase()} ${k.emoji} and is waiting for your help.` : '';
+  const c = crashKind(state);
+  const stop = c
+    ? ` Then: ${c.name} ${c.emoji}💥 The tow truck is waiting for you.`
+    : k ? ` Then it stopped at a ${k.name.toLowerCase()} ${k.emoji} and is waiting for your help.` : '';
   setTimeout(() => alert(`While you were away the car drove ${formatNumber(state.odometer - before)} miles.${stop}`), delay);
 }
 
@@ -60,6 +63,10 @@ const upgradeButtons = GROUPS.flatMap(([kind, title]) => {
 
 const takeoverBtn = $<HTMLButtonElement>('takeover');
 takeoverBtn.addEventListener('click', () => { state = resolveTakeover(state); save(); render(); });
+const crashBtn = $<HTMLButtonElement>('crash');
+crashBtn.addEventListener('click', () => { state = hurryTow(state); save(); render(); });
+const coffeeBtn = $<HTMLButtonElement>('coffee');
+coffeeBtn.addEventListener('click', () => { state = coffee(state); save(); render(); });
 $('honk').addEventListener('click', () => { state = honk(state); render(); });
 $('reset').addEventListener('click', () => {
   if (confirm('Start the trip over from the driveway?')) { state = newGame(Date.now()); save(); render(); }
@@ -71,6 +78,20 @@ function render() {
   $('speed').textContent = formatNumber(currentSpeed(state));
   const auto = autonomyLevel(state.levels);
   $('autonomy').textContent = `L${auto} · ${AUTONOMY[auto].name}`;
+  const c = crashKind(state);
+  crashBtn.hidden = !c;
+  if (c) {
+    crashBtn.querySelector('.what')!.textContent = `${c.emoji}💥 ${c.name}!`;
+    crashBtn.querySelector('.ask')!.textContent = `Repairs ${formatNumber(state.crash!.cost)} mi · tap to hurry the tow truck (${Math.ceil(state.crash!.left)}s)`;
+    (crashBtn.querySelector('.timer') as HTMLElement).style.width = `${(100 * (state.crash!.left / TOW_SECONDS)).toFixed(1)}%`;
+  }
+  const tired = state.tiredness;
+  $('dad-face').textContent = auto >= 5 ? '💤' : tired < 0.3 ? '😀' : tired < 0.55 ? '🙂' : tired < 0.8 ? '🥱' : '😴';
+  const meter = $('tired');
+  meter.style.width = `${(tired * 100).toFixed(1)}%`;
+  meter.style.background = tired < 0.55 ? 'var(--good)' : tired < 0.8 ? 'var(--accent)' : '#e5484d';
+  $('coffee-cost').textContent = ` ${formatNumber(coffeeCost(state))} mi`;
+  coffeeBtn.disabled = !canBuyCoffee(state);
   const k = takeoverKind(state);
   takeoverBtn.hidden = !k;
   if (k) {
@@ -107,10 +128,12 @@ let lastSave = 0;
 function frame(t: number) {
   const dt = Math.min((t - last) / 1000, 1);
   last = t;
-  const wasStuck = !!state.takeover;
+  const wasStuck = !!state.takeover, wasCrashed = !!state.crash;
   state = { ...advance(state, dt, { dadHelps: true }), lastTick: Date.now() };
   if (state.takeover && !wasStuck) navigator.vibrate?.(60);
-  roadScene.frame(Math.min(dt, 0.1), currentSpeed(state), tripProgress(state), sensorCones(state.levels), autonomyLevel(state.levels));
+  if (state.crash && !wasCrashed) navigator.vibrate?.([80, 60, 200]);
+  roadScene.frame(Math.min(dt, 0.1), currentSpeed(state), tripProgress(state), sensorCones(state.levels), autonomyLevel(state.levels),
+    state.crash && { id: state.crashes, kind: state.crash.kind });
   render();
   if (t - lastSave > 5000) { save(); lastSave = t; }
   requestAnimationFrame(frame);
