@@ -13,11 +13,14 @@ export interface Upgrade {
 }
 
 export const UPGRADES: readonly Upgrade[] = [
-  { id: 'cruise', name: 'Cruise Control', description: '+0.5 miles/sec of steady driving', baseCost: 10, costGrowth: 1.15, speedPerLevel: 0.5, mulPerLevel: 0 },
-  { id: 'tires', name: 'All-Season Tires', description: '+3 miles/sec on any road', baseCost: 120, costGrowth: 1.17, speedPerLevel: 3, mulPerLevel: 0 },
+  { id: 'camera', name: 'Front Camera', description: 'Sees lane lines and cars ahead. +0.5 mi/s, sees farther each level', baseCost: 10, costGrowth: 1.15, speedPerLevel: 0.5, mulPerLevel: 0 },
+  { id: 'radar', name: 'Front Radar', description: 'Spots cars far ahead in a narrow beam. +3 mi/s', baseCost: 120, costGrowth: 1.17, speedPerLevel: 3, mulPerLevel: 0 },
   { id: 'snacks', name: 'Snack Cooler', description: 'Happy kids, fewer stops: +10% speed', baseCost: 500, costGrowth: 1.6, speedPerLevel: 0, mulPerLevel: 0.1 },
-  { id: 'lane', name: 'Lane Assist AI', description: '+20 miles/sec, smarter autopilot', baseCost: 2500, costGrowth: 1.2, speedPerLevel: 20, mulPerLevel: 0 },
+  { id: 'sidecams', name: 'Side & Rear Cameras', description: 'Sees all around the car. +20 mi/s', baseCost: 2500, costGrowth: 1.2, speedPerLevel: 20, mulPerLevel: 0 },
 ];
+
+/** Upgrades renamed in save version 2 (sensors replaced the first upgrade list). */
+const RENAMED_UPGRADES: Record<string, string> = { cruise: 'camera', tires: 'radar', lane: 'sidecams' };
 
 export interface Landmark {
   at: number;
@@ -35,7 +38,7 @@ export const LANDMARKS: readonly Landmark[] = [
 ];
 
 export const TRIP_LENGTH = LANDMARKS[LANDMARKS.length - 1].at;
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 /** Offline progress is capped so a long absence doesn't skip the whole game. */
 export const MAX_OFFLINE_SECONDS = 8 * 60 * 60;
 
@@ -136,12 +139,24 @@ export function deserialize(raw: string | null, now: number): GameState {
       version: SAVE_VERSION,
       odometer: s.odometer,
       miles: s.miles,
-      levels: s.levels && typeof s.levels === 'object' ? s.levels : {},
+      levels: migrateLevels(s.levels),
       lastTick: typeof s.lastTick === 'number' ? s.lastTick : now,
     };
   } catch {
     return newGame(now);
   }
+}
+
+/** Keep only numeric levels, carrying old upgrade ids over to their replacements. */
+function migrateLevels(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [id, lv] of Object.entries(raw)) {
+    if (typeof lv !== 'number' || !(lv > 0)) continue;
+    const to = RENAMED_UPGRADES[id] ?? id;
+    out[to] = (out[to] ?? 0) + Math.floor(lv);
+  }
+  return out;
 }
 
 export function formatNumber(n: number): string {

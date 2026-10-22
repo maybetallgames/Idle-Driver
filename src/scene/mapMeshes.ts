@@ -9,6 +9,7 @@ import {
 import { TERRAIN_COLS, ROW_STEP } from '../map/geo';
 import { expandLanes, roadEdges, terrainGrid, type MapChunk } from '../map/chunk';
 import { rng } from '../world';
+import { withSensorView } from './sensorShader';
 
 const LAND_COLORS: Record<string, number> = {
   w: 0x4f86c0, o: 0x97b872, l: 0xa6b083, m: 0xa39f8f, h: 0x8e8a86, b: 0xc4b79c,
@@ -17,13 +18,13 @@ const LAND_COLORS: Record<string, number> = {
 };
 
 const mats = {
-  terrain: new MeshLambertMaterial({ vertexColors: true, flatShading: true, side: DoubleSide }),
-  road: new MeshLambertMaterial({ color: 0x3b3f45, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
-  sideRoad: new MeshLambertMaterial({ color: 0x55595f, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
-  lines: new MeshBasicMaterial({ vertexColors: true, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }),
-  building: new MeshLambertMaterial({ vertexColors: true, flatShading: true, side: DoubleSide }),
-  trunk: new MeshLambertMaterial({ color: 0x7a5a3c, flatShading: true }),
-  crown: new MeshLambertMaterial({ color: 0xffffff, flatShading: true }),
+  terrain: withSensorView(new MeshLambertMaterial({ vertexColors: true, flatShading: true, side: DoubleSide })),
+  road: withSensorView(new MeshLambertMaterial({ color: 0x3b3f45, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })),
+  sideRoad: withSensorView(new MeshLambertMaterial({ color: 0x55595f, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })),
+  lines: withSensorView(new MeshBasicMaterial({ vertexColors: true, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 })),
+  building: withSensorView(new MeshLambertMaterial({ vertexColors: true, flatShading: true, side: DoubleSide })),
+  trunk: withSensorView(new MeshLambertMaterial({ color: 0x7a5a3c, flatShading: true })),
+  crown: withSensorView(new MeshLambertMaterial({ color: 0xffffff, flatShading: true })),
 };
 
 const treeGeo = (() => {

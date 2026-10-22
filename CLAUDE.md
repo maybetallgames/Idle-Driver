@@ -15,6 +15,9 @@ and the result must be playable in a mobile browser.
 - `src/main.ts`: DOM wiring, game loop (`requestAnimationFrame`), save/load to `localStorage`,
   offline catch-up.
 - `src/world.ts`: pure traffic lane logic and a seeded RNG.
+- `src/perception.ts`: pure sensor model. Which wedges around the car each owned sensor covers
+  (`sensorCones`) and whether a point is perceived. `src/scene/sensorShader.ts` draws it: full color
+  inside the wedges, dim night-blue outside, glowing wedge edges.
 - `src/map/`: pure map helpers. `geo.ts` (projection, resampling, lane/building rules; also used by
   the bake script) and `chunk.ts` (baked chunk format, position/heading along the route).
 - `src/scene/`: Three.js rendering. `mapScene.ts` loads chunks around the car and drives the SUV,
@@ -32,8 +35,9 @@ The SessionStart hook (`.claude/hooks/session-start.sh`) runs `npm install` in c
 
 - `npm run check`: typecheck + tests + production build. **Run before every commit.**
 - `npm test`: unit tests only.
-- `npm run screenshot [-- out.png] [--mile N]`: builds, serves, and saves a 390x844 phone screenshot
-  (default `screenshot.png`, gitignored), optionally at mile N of the route. Use it to visually verify UI changes, then read the
+- `npm run screenshot [-- out.png] [--mile N] [--levels camera:5,radar:2]`: builds, serves, and saves
+  a 390x844 phone screenshot (default `screenshot.png`, gitignored), optionally at mile N of the route
+  and with those upgrades owned. Use it to visually verify UI changes, then read the
   image. It exits non-zero if the page logs errors.
 - `npm run dev`: dev server (not usually useful in the cloud since the owner can't open it).
 
