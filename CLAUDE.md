@@ -11,7 +11,9 @@ and the result must be playable in a mobile browser.
 
 - TypeScript + Vite, no framework. Vitest for tests.
 - `src/game.ts`: all game logic as pure functions over `GameState` (no DOM, no timers).
-  Put new mechanics here and unit test them in `tests/`.
+  Put new mechanics here and unit test them in `tests/`. Upgrades are sensors (repeatable), driving
+  features (one-time, with `requires`) and comfort; features set the autonomy level (L0-L5), which spaces
+  out takeovers (the car stops until you tap, or online Dad sorts it out after a while).
 - `src/main.ts`: DOM wiring, game loop (`requestAnimationFrame`), save/load to `localStorage`,
   offline catch-up.
 - `src/world.ts`: pure traffic lane logic and a seeded RNG.
@@ -35,9 +37,9 @@ The SessionStart hook (`.claude/hooks/session-start.sh`) runs `npm install` in c
 
 - `npm run check`: typecheck + tests + production build. **Run before every commit.**
 - `npm test`: unit tests only.
-- `npm run screenshot [-- out.png] [--mile N] [--levels camera:5,radar:2]`: builds, serves, and saves
-  a 390x844 phone screenshot (default `screenshot.png`, gitignored), optionally at mile N of the route
-  and with those upgrades owned. Use it to visually verify UI changes, then read the
+- `npm run screenshot [-- out.png] [--mile N] [--levels camera:5,radar:2] [--miles N] [--takeover storm]`:
+  builds, serves, and saves a 390x844 phone screenshot (default `screenshot.png`, gitignored), optionally
+  at mile N of the route, with those upgrades owned, that many miles to spend, or stuck on a takeover. Use it to visually verify UI changes, then read the
   image. It exits non-zero if the page logs errors.
 - `npm run dev`: dev server (not usually useful in the cloud since the owner can't open it).
 

@@ -9,7 +9,7 @@ import { initTraffic, rng, stepTraffic, type TrafficCar } from '../world';
 import { perceives, type Cone } from '../perception';
 import { sensorUniforms, setCones, withSensorView } from './sensorShader';
 import { flat, makeSuv, trafficGeometries } from './models';
-import { buildChunk, type ChunkMeshes } from './mapMeshes';
+import { buildChunk, setBlueLaneLines, type ChunkMeshes } from './mapMeshes';
 
 const TRAFFIC_COUNT = 10;
 const CAR_COLORS = [0xd9d9d9, 0x9aa5b1, 0x3d5a80, 0xe76f51, 0xf4f1de, 0x6d597a, 0x283618, 0xbc4749, 0x1d1d1d];
@@ -19,9 +19,9 @@ const SNAP_GAP = 3000;
 export interface MapView {
   /**
    * Advance and draw one frame. `progress` is 0..1 along the trip, `idleSpeed` in miles/sec,
-   * `cones` what the car's sensors cover.
+   * `cones` what the car's sensors cover, `autonomy` the autonomy level (0..5).
    */
-  frame(dt: number, idleSpeed: number, progress: number, cones: readonly Cone[]): void;
+  frame(dt: number, idleSpeed: number, progress: number, cones: readonly Cone[], autonomy: number): void;
   /** Where we are, for the HUD (undefined until the map index has loaded). */
   place(): { s: number; total: number; prev: string; next?: { name: string; s: number } } | undefined;
 }
@@ -151,8 +151,9 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
   const tint = new Color();
   const v = new Vector3(), ahead = new Vector3();
 
-  function frame(dt: number, _idleSpeed: number, progress: number, cones: readonly Cone[]) {
+  function frame(dt: number, _idleSpeed: number, progress: number, cones: readonly Cone[], autonomy: number) {
     setCones(cones);
+    setBlueLaneLines(autonomy >= 2);
     if (!index) { renderer.render(scene, camera); return; }
     const target = opts.mile !== undefined ? opts.mile * 1609.344 : progress * index.total;
     const ci = chunkIndex(index, shownS ?? target);

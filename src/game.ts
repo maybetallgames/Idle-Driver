@@ -1,7 +1,10 @@
 // Pure game logic: no DOM, no timers. Everything here is unit-tested.
 
+export type UpgradeKind = 'sensor' | 'feature' | 'comfort';
+
 export interface Upgrade {
   id: string;
+  kind: UpgradeKind;
   name: string;
   description: string;
   baseCost: number;
@@ -10,13 +13,55 @@ export interface Upgrade {
   speedPerLevel: number;
   /** Multiplier added per level (applied to total speed). */
   mulPerLevel: number;
+  /** Highest level that can be bought (features are one-time: max 1). */
+  max?: number;
+  /** Upgrade levels needed before this can be bought. */
+  requires?: Readonly<Record<string, number>>;
 }
 
 export const UPGRADES: readonly Upgrade[] = [
-  { id: 'camera', name: 'Front Camera', description: 'Sees lane lines and cars ahead. +0.5 mi/s, sees farther each level', baseCost: 10, costGrowth: 1.15, speedPerLevel: 0.5, mulPerLevel: 0 },
-  { id: 'radar', name: 'Front Radar', description: 'Spots cars far ahead in a narrow beam. +3 mi/s', baseCost: 120, costGrowth: 1.17, speedPerLevel: 3, mulPerLevel: 0 },
-  { id: 'snacks', name: 'Snack Cooler', description: 'Happy kids, fewer stops: +10% speed', baseCost: 500, costGrowth: 1.6, speedPerLevel: 0, mulPerLevel: 0.1 },
-  { id: 'sidecams', name: 'Side & Rear Cameras', description: 'Sees all around the car. +20 mi/s', baseCost: 2500, costGrowth: 1.2, speedPerLevel: 20, mulPerLevel: 0 },
+  // Sensors: repeatable, each level sees farther.
+  { id: 'camera', kind: 'sensor', name: 'Front Camera', description: 'Sees lane lines and cars ahead. +0.5 mi/s, sees farther each level', baseCost: 10, costGrowth: 1.15, speedPerLevel: 0.5, mulPerLevel: 0 },
+  { id: 'radar', kind: 'sensor', name: 'Front Radar', description: 'Spots cars far ahead in a narrow beam. +3 mi/s', baseCost: 120, costGrowth: 1.17, speedPerLevel: 3, mulPerLevel: 0 },
+  { id: 'sidecams', kind: 'sensor', name: 'Side & Rear Cameras', description: 'Sees all around the car. +20 mi/s', baseCost: 2500, costGrowth: 1.2, speedPerLevel: 20, mulPerLevel: 0 },
+  { id: 'lidar', kind: 'sensor', name: 'Lidar', description: 'Spinning laser on the roof: a 3D map of everything around. +60 mi/s', baseCost: 12000, costGrowth: 1.22, speedPerLevel: 60, mulPerLevel: 0 },
+  // Driving features: one-time software unlocks that raise the autonomy level.
+  { id: 'acc', kind: 'feature', name: 'Adaptive Cruise', description: 'Keeps a steady speed behind traffic. +25% speed', baseCost: 150, costGrowth: 1, speedPerLevel: 0, mulPerLevel: 0.25, max: 1, requires: { radar: 1 } },
+  { id: 'lanekeep', kind: 'feature', name: 'Lane Keeping', description: 'Holds the lane so Dad can relax. +25% speed', baseCost: 100, costGrowth: 1, speedPerLevel: 0, mulPerLevel: 0.25, max: 1, requires: { camera: 2 } },
+  { id: 'autosteer', kind: 'feature', name: 'Autosteer', description: 'Cruise and lane keeping together. Lane lines turn blue. +50% speed', baseCost: 1200, costGrowth: 1, speedPerLevel: 0, mulPerLevel: 0.5, max: 1, requires: { acc: 1, lanekeep: 1, camera: 5 } },
+  { id: 'lanechange', kind: 'feature', name: 'Auto Lane Change', description: 'Passes slow traffic on its own. +30% speed', baseCost: 4000, costGrowth: 1, speedPerLevel: 0, mulPerLevel: 0.3, max: 1, requires: { autosteer: 1, sidecams: 1 } },
+  { id: 'navhwy', kind: 'feature', name: 'Navigate on Highway', description: 'Takes exits and merges itself. +50% speed', baseCost: 9000, costGrowth: 1, speedPerLevel: 0, mulPerLevel: 0.5, max: 1, requires: { lanechange: 1, radar: 5 } },
+  { id: 'citystreets', kind: 'feature', name: 'City Streets', description: 'Drives through cities and at night. +50% speed', baseCost: 25000, costGrowth: 1, speedPerLevel: 0, mulPerLevel: 0.5, max: 1, requires: { navhwy: 1, lidar: 1 } },
+  { id: 'fsd', kind: 'feature', name: 'Full Self Driving', description: 'No driver needed. Dad naps in the back. +100% speed', baseCost: 50000, costGrowth: 1, speedPerLevel: 0, mulPerLevel: 1, max: 1, requires: { citystreets: 1, lidar: 4, camera: 15 } },
+  // Comfort.
+  { id: 'snacks', kind: 'comfort', name: 'Snack Cooler', description: 'Happy kids, fewer stops: +10% speed', baseCost: 500, costGrowth: 1.6, speedPerLevel: 0, mulPerLevel: 0.1 },
+];
+
+/** SAE-style autonomy levels, unlocked by owning driving features. */
+export const AUTONOMY = [
+  { level: 0, name: 'Dad drives', feature: undefined },
+  { level: 1, name: 'Driver assist', feature: ['acc', 'lanekeep'] },
+  { level: 2, name: 'Partial autopilot', feature: ['autosteer'] },
+  { level: 3, name: 'Highway pilot', feature: ['navhwy'] },
+  { level: 4, name: 'City & night pilot', feature: ['citystreets'] },
+  { level: 5, name: 'Full self driving', feature: ['fsd'] },
+] as const;
+
+/** Average seconds of driving between takeovers at each autonomy level (L5 never asks). */
+export const TAKEOVER_INTERVAL = [40, 75, 150, 360, 1200, Infinity];
+/** Online, Dad sorts a takeover out himself after this many seconds if you don't tap. */
+export const DAD_RESOLVE_SECONDS = 20;
+/** Tapping a takeover is worth this many seconds of driving. */
+export const TAKEOVER_BONUS_SECONDS = 15;
+
+export interface TakeoverKind { id: string; emoji: string; name: string }
+export const TAKEOVER_KINDS: readonly TakeoverKind[] = [
+  { id: 'construction', emoji: '🚧', name: 'Construction zone' },
+  { id: 'interchange', emoji: '🔀', name: 'Confusing interchange' },
+  { id: 'toll', emoji: '🎫', name: 'Toll plaza' },
+  { id: 'merge', emoji: '↪️', name: 'Tight merge' },
+  { id: 'storm', emoji: '⛈️', name: 'Sudden storm' },
+  { id: 'deer', emoji: '🦌', name: 'Deer by the road' },
 ];
 
 /** Upgrades renamed in save version 2 (sensors replaced the first upgrade list). */
@@ -51,10 +96,42 @@ export interface GameState {
   levels: Record<string, number>;
   /** Epoch ms of the last tick, for offline progress. */
   lastTick: number;
+  /** Seconds of driving until the car next needs help. */
+  untilTakeover: number;
+  /** How many takeovers so far (seeds which one comes next). */
+  takeovers: number;
+  /** The situation the car is stuck on, if any. While set, the car waits. */
+  takeover?: { kind: string; waited: number };
 }
 
 export function newGame(now: number): GameState {
-  return { version: SAVE_VERSION, odometer: 0, miles: 0, levels: {}, lastTick: now };
+  return { version: SAVE_VERSION, odometer: 0, miles: 0, levels: {}, lastTick: now, untilTakeover: takeoverGap(0, 0), takeovers: 0 };
+}
+
+/** The highest autonomy level whose features are owned. */
+export function autonomyLevel(levels: Readonly<Record<string, number>>): number {
+  let best = 0;
+  for (const a of AUTONOMY) {
+    if (a.feature && a.feature.some((id) => (levels[id] ?? 0) > 0)) best = a.level;
+  }
+  return best;
+}
+
+/** A repeatable 0..1 number from an integer. */
+function hash01(n: number): number {
+  let t = (n + 0x6d2b79f5) | 0;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+/** Seconds of driving before the next takeover: the level's average, give or take 40%. */
+export function takeoverGap(autonomy: number, count: number): number {
+  return TAKEOVER_INTERVAL[autonomy] * (0.6 + 0.8 * hash01(count * 2 + 1));
+}
+
+export function takeoverKind(state: GameState): TakeoverKind | undefined {
+  return state.takeover && (TAKEOVER_KINDS.find((k) => k.id === state.takeover!.kind) ?? TAKEOVER_KINDS[0]);
 }
 
 export function level(state: GameState, id: string): number {
@@ -73,30 +150,87 @@ export function speed(state: GameState): number {
   return flat * mul;
 }
 
+/** How fast the car is going right now: zero while it waits for help. */
+export function currentSpeed(state: GameState): number {
+  return state.takeover ? 0 : speed(state);
+}
+
 export function upgradeCost(state: GameState, id: string): number {
   const u = findUpgrade(id);
   return Math.ceil(u.baseCost * Math.pow(u.costGrowth, level(state, id)));
 }
 
+/** Requirements not yet met, as [upgrade, level needed] pairs. */
+export function missingRequirements(state: GameState, id: string): [Upgrade, number][] {
+  const u = findUpgrade(id);
+  return Object.entries(u.requires ?? {})
+    .filter(([req, lv]) => level(state, req) < lv)
+    .map(([req, lv]) => [findUpgrade(req), lv]);
+}
+
+export function isMaxed(state: GameState, id: string): boolean {
+  const u = findUpgrade(id);
+  return u.max !== undefined && level(state, id) >= u.max;
+}
+
 export function canBuy(state: GameState, id: string): boolean {
-  return state.miles >= upgradeCost(state, id);
+  return !isMaxed(state, id) && missingRequirements(state, id).length === 0 && state.miles >= upgradeCost(state, id);
 }
 
 export function buy(state: GameState, id: string): GameState {
-  const cost = upgradeCost(state, id);
-  if (state.miles < cost) return state;
+  if (!canBuy(state, id)) return state;
+  const before = autonomyLevel(state.levels);
+  const levels = { ...state.levels, [id]: level(state, id) + 1 };
+  const after = autonomyLevel(levels);
   return {
     ...state,
-    miles: state.miles - cost,
-    levels: { ...state.levels, [id]: level(state, id) + 1 },
+    miles: state.miles - upgradeCost(state, id),
+    levels,
+    // A new autonomy level spaces takeovers out right away.
+    untilTakeover: after > before ? Math.max(state.untilTakeover, takeoverGap(after, state.takeovers)) : state.untilTakeover,
   };
 }
 
-/** Advance the simulation by `seconds`. */
-export function advance(state: GameState, seconds: number): GameState {
-  if (seconds <= 0) return state;
-  const gained = speed(state) * seconds;
-  return { ...state, odometer: state.odometer + gained, miles: state.miles + gained };
+export interface AdvanceOptions {
+  /** True while the player is watching: Dad then handles a takeover himself after a while. */
+  dadHelps?: boolean;
+}
+
+/** Advance the simulation by `seconds`. Offline (no `dadHelps`), the car stops at a takeover and waits. */
+export function advance(state: GameState, seconds: number, opts: AdvanceOptions = {}): GameState {
+  let s = state;
+  let left = seconds;
+  for (let guard = 0; left > 1e-9 && guard < 10_000; guard++) {
+    if (s.takeover) {
+      if (!opts.dadHelps) break;
+      const wait = Math.min(left, DAD_RESOLVE_SECONDS - s.takeover.waited);
+      left -= wait;
+      const waited = s.takeover.waited + wait;
+      s = waited >= DAD_RESOLVE_SECONDS - 1e-9 ? clearTakeover(s) : { ...s, takeover: { ...s.takeover, waited } };
+      continue;
+    }
+    const drive = Math.min(left, s.untilTakeover);
+    const gained = speed(s) * drive;
+    left -= drive;
+    s = { ...s, odometer: s.odometer + gained, miles: s.miles + gained, untilTakeover: s.untilTakeover - drive };
+    if (s.untilTakeover <= 1e-9) {
+      const kind = TAKEOVER_KINDS[Math.floor(hash01(s.takeovers * 2) * TAKEOVER_KINDS.length)].id;
+      s = { ...s, takeover: { kind, waited: 0 } };
+    }
+  }
+  return s;
+}
+
+function clearTakeover(s: GameState): GameState {
+  const takeovers = s.takeovers + 1;
+  return { ...s, takeover: undefined, takeovers, untilTakeover: takeoverGap(autonomyLevel(s.levels), takeovers) };
+}
+
+/** The player taps the takeover prompt: the car gets going again, with a bonus. */
+export function resolveTakeover(state: GameState): GameState {
+  if (!state.takeover) return state;
+  const gained = speed(state) * TAKEOVER_BONUS_SECONDS;
+  return clearTakeover({ ...state, odometer: state.odometer + gained, miles: state.miles + gained });
 }
 
 /** Advance to wall-clock `now`, capping offline time. Returns new state and seconds simulated. */
@@ -107,7 +241,7 @@ export function catchUp(state: GameState, now: number): { state: GameState; seco
 
 /** Tapping the horn gives a small boost: one second of driving, minimum 1 mile. */
 export function honk(state: GameState): GameState {
-  const gained = Math.max(1, speed(state));
+  const gained = Math.max(1, currentSpeed(state));
   return { ...state, odometer: state.odometer + gained, miles: state.miles + gained };
 }
 
@@ -135,13 +269,20 @@ export function deserialize(raw: string | null, now: number): GameState {
   try {
     const s = JSON.parse(raw) as Partial<GameState>;
     if (typeof s.odometer !== 'number' || typeof s.miles !== 'number') return newGame(now);
-    return {
+    const levels = migrateLevels(s.levels);
+    const takeovers = typeof s.takeovers === 'number' && s.takeovers >= 0 ? Math.floor(s.takeovers) : 0;
+    const t = s.takeover;
+    const out: GameState = {
       version: SAVE_VERSION,
       odometer: s.odometer,
       miles: s.miles,
-      levels: migrateLevels(s.levels),
+      levels,
       lastTick: typeof s.lastTick === 'number' ? s.lastTick : now,
+      untilTakeover: typeof s.untilTakeover === 'number' && s.untilTakeover >= 0 ? s.untilTakeover : takeoverGap(autonomyLevel(levels), takeovers),
+      takeovers,
     };
+    if (t && typeof t.kind === 'string') out.takeover = { kind: t.kind, waited: typeof t.waited === 'number' ? t.waited : 0 };
+    return out;
   } catch {
     return newGame(now);
   }
@@ -154,7 +295,8 @@ function migrateLevels(raw: unknown): Record<string, number> {
   for (const [id, lv] of Object.entries(raw)) {
     if (typeof lv !== 'number' || !(lv > 0)) continue;
     const to = RENAMED_UPGRADES[id] ?? id;
-    out[to] = (out[to] ?? 0) + Math.floor(lv);
+    const max = UPGRADES.find((u) => u.id === to)?.max ?? Infinity;
+    out[to] = Math.min(max, (out[to] ?? 0) + Math.floor(lv));
   }
   return out;
 }
@@ -170,7 +312,7 @@ export function formatNumber(n: number): string {
   return `${n.toFixed(n < 10 ? 2 : n < 100 ? 1 : 0)}${units[i]}`;
 }
 
-function findUpgrade(id: string): Upgrade {
+export function findUpgrade(id: string): Upgrade {
   const u = UPGRADES.find((x) => x.id === id);
   if (!u) throw new Error(`Unknown upgrade: ${id}`);
   return u;

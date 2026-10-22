@@ -4,7 +4,7 @@
 import { Vector2, Vector3, Vector4, type Material } from 'three';
 import type { Cone } from '../perception';
 
-export const MAX_CONES = 4;
+export const MAX_CONES = 6;
 
 export const sensorUniforms = {
   uSensorCar: { value: new Vector3() },

@@ -27,6 +27,12 @@ const mats = {
   crown: withSensorView(new MeshLambertMaterial({ color: 0xffffff, flatShading: true })),
 };
 
+/** With autosteer the car's screen draws lane lines blue, like a real driver-assist display. */
+export function setBlueLaneLines(on: boolean) {
+  mats.lines.color.setHex(on ? 0x6cc8ff : 0xffffff);
+}
+
+
 const treeGeo = (() => {
   const trunk = new CylinderGeometry(0.15, 0.25, 1, 5);
   trunk.translate(0, 0.5, 0);
