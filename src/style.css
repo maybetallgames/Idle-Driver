@@ -100,3 +100,36 @@ button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulat
 footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; margin-top: 8px; }
 .credits { font-size: 0.7rem; flex-basis: 100%; order: 3; }
 .link { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 8px 0; }
+.topbar { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 8px; }
+.topbar > div { background: var(--panel); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.topbar .value { font-size: 1.25rem; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar .unit { margin: 0; font-size: 0.72rem; display: block; }
+.live { color: #ff5a5f; font-weight: 800; animation: live-blink 1.6s ease-in-out infinite; }
+@keyframes live-blink { 50% { opacity: 0.4; } }
+.gauge { height: 10px; margin: 8px 0 4px; background: #1d2b3a; border-radius: 5px; overflow: hidden; }
+#gas { height: 100%; width: 100%; background: var(--accent); transition: width 0.3s; }
+.speedo {
+  position: absolute; right: 8px; top: 38px; z-index: 1; pointer-events: none;
+  background: #1d2b3acc; border-radius: 8px; padding: 3px 8px; font-size: 0.85rem; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.status {
+  position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 2; pointer-events: none;
+  background: #1d2b3ae6; border: 1px solid var(--accent); border-radius: 12px; padding: 10px 12px;
+  text-align: center; font-weight: 700;
+}
+.status[hidden] { display: none; }
+.honk { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; }
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--panel); border-radius: 12px; padding: 4px; }
+.tab { background: none; border: 0; border-radius: 9px; padding: 10px; font-weight: 700; color: var(--muted); }
+.tab[aria-selected='true'] { background: var(--bg); color: var(--text); }
+.upgrades[hidden] { display: none; }
+.away {
+  border: 0; border-radius: 16px; padding: 18px; width: min(92vw, 360px);
+  background: var(--panel); color: var(--text);
+}
+.away::backdrop { background: #0009; }
+.away h2 { margin: 0 0 8px; font-size: 1.2rem; }
+.away ul { list-style: none; padding: 0; margin: 0 0 10px; display: flex; flex-direction: column; gap: 6px; }
+.away form { margin-top: 12px; }
+.away .honk { width: 100%; }

@@ -10,12 +10,20 @@
     <main id="app">
       <header>
         <h1>Idle Driver</h1>
-        <p class="sub">You are the autopilot. Get the family to the mountains.</p>
+        <p class="sub">You are the autopilot. Get the family to the mountains, live on stream.</p>
       </header>
+
+      <section class="topbar">
+        <div><span class="label">Cash</span><span id="cash" class="value">$0</span><span id="rate" class="unit"></span></div>
+        <div><span class="label"><span class="live">● LIVE</span> Viewers</span><span id="viewers" class="value">0</span></div>
+        <div><span class="label">Gas ⛽</span><div class="gauge"><div id="gas"></div></div><span id="gas-text" class="unit"></span></div>
+      </section>
 
       <div id="view" class="view" aria-label="The family SUV on the highway">
         <div id="place" class="place"></div>
         <div id="autonomy" class="autonomy"></div>
+        <div id="speedo" class="speedo"></div>
+        <div id="status" class="status" hidden></div>
         <button id="takeover" class="takeover" hidden>
           <span class="what"></span><span class="ask"></span><span class="timer-bar"><span class="timer"></span></span>
         </button>
@@ -23,11 +31,6 @@
           <span class="what"></span><span class="ask"></span><span class="timer-bar"><span class="timer"></span></span>
         </button>
       </div>
-
-      <section class="stats">
-        <div><span class="label">Miles to spend</span><span id="miles" class="value">0</span></div>
-        <div><span class="label">Speed</span><span id="speed" class="value">0</span><span class="unit">mi/s</span></div>
-      </section>
 
       <section class="trip">
         <div class="bar"><div id="progress"></div></div>
@@ -41,11 +44,23 @@
       </section>
 
       <div class="actions">
-        <button id="honk" class="honk">Honk 📯</button>
+        <button id="honk" class="honk">Honk 📯<span class="small">chat loves it</span></button>
         <button id="coffee" class="honk coffee">☕ Coffee<span id="coffee-cost" class="small"></span></button>
       </div>
 
-      <section id="upgrades" class="upgrades"></section>
+      <nav class="tabs" role="tablist">
+        <button id="tab-car" class="tab" role="tab" aria-selected="true">🚙 Car</button>
+        <button id="tab-stream" class="tab" role="tab" aria-selected="false">📱 Stream</button>
+      </nav>
+      <section id="upgrades-car" class="upgrades"></section>
+      <section id="upgrades-stream" class="upgrades" hidden></section>
+
+      <dialog id="away" class="away">
+        <h2>While you were away</h2>
+        <ul id="away-list"></ul>
+        <p id="away-stop"></p>
+        <form method="dialog"><button class="honk">Back on the road</button></form>
+      </dialog>
 
       <footer>
         <span id="build" class="muted"></span>

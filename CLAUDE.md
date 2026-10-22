@@ -11,7 +11,10 @@ and the result must be playable in a mobile browser.
 
 - TypeScript + Vite, no framework. Vitest for tests.
 - `src/game.ts`: all game logic as pure functions over `GameState` (no DOM, no timers).
-  Put new mechanics here and unit test them in `tests/`. Upgrades are sensors (repeatable), driving
+  Put new mechanics here and unit test them in `tests/`. Distances are real route miles and speeds real
+  mph (the trip is as long as the drive). Money ($) comes from stream viewers (followers raise the
+  audience, hype spikes fade); gas costs money and Dad fills up when the tank runs dry. Upgrades are
+  sensors (repeatable), stream gear, driving
   features (one-time, with `requires`) and comfort; features set the autonomy level (L0-L5), which spaces
   out takeovers (the car stops until you tap, or online Dad sorts it out after a while). Dad's
   tiredness rises while driving (slower at higher autonomy); untapped takeovers and falling asleep
@@ -42,11 +45,11 @@ The SessionStart hook (`.claude/hooks/session-start.sh`) runs `npm install` in c
 
 - `npm run check`: typecheck + tests + production build. **Run before every commit.**
 - `npm test`: unit tests only.
-- `npm run screenshot [-- out.png] [--mile N] [--levels camera:5,radar:2] [--miles N] [--takeover storm]
-  [--crash spin --wait 4000] [--tired 0.7]`: builds, serves, and saves a 390x844 phone screenshot
-  (default `screenshot.png`, gitignored), optionally at mile N of the route, with those upgrades owned,
-  that many miles to spend, stuck on a takeover, mid-crash (`--wait` ms after load picks the moment),
-  or with Dad that tired. Use it to visually verify UI changes, then read the
+- `npm run screenshot [-- out.png] [--mile N] [--levels camera:5,radar:2] [--cash 500] [--takeover storm]
+  [--crash spin --wait 4000] [--tired 0.7] [--away 7200] [--state '{"followers":300}']`: builds, serves,
+  and saves a 390x844 phone screenshot (default `screenshot.png`, gitignored), optionally at mile N of
+  the route, with those upgrades owned, that much cash, stuck on a takeover, mid-crash (`--wait` ms after
+  load picks the moment), with Dad that tired, back from N seconds away, or any other save fields. Use it to visually verify UI changes, then read the
   image. It exits non-zero if the page logs errors.
 - `npm run dev`: dev server (not usually useful in the cloud since the owner can't open it).
 
@@ -66,6 +69,7 @@ The footer shows `build <sha>` so the owner can tell which commit they're playin
 - Keep logic pure and tested; keep `main.ts` thin.
 - Save format: if you change `GameState`, keep `deserialize` backward compatible (old saves
   must load) and add a test for it. Bump `SAVE_VERSION` if a migration is needed.
-- Balance numbers (costs, speeds, landmark distances) live in `UPGRADES` / `LANDMARKS`.
+- Balance numbers (costs, speeds, stream, gas, landmark distances) live in `UPGRADES`, `LANDMARKS`, `STATES`
+  and the constants at the top of `game.ts`.
 - Vite `base` is `./` so the build works under the Pages sub-path; use relative asset paths.
 - Work on a branch and open a PR; the owner reviews and merges from their phone.

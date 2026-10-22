@@ -19,11 +19,11 @@ const SNAP_GAP = 3000;
 
 export interface MapView {
   /**
-   * Advance and draw one frame. `progress` is 0..1 along the trip, `idleSpeed` in miles/sec,
+   * Advance and draw one frame. `routeMeters` is how far along the route the car is,
    * `cones` what the car's sensors cover, `autonomy` the autonomy level (0..5), `crash` the crash in
    * progress (a new `id` plays the crash animation).
    */
-  frame(dt: number, idleSpeed: number, progress: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }): void;
+  frame(dt: number, routeMeters: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }): void;
   /** Where we are, for the HUD (undefined until the map index has loaded). */
   place(): { s: number; total: number; prev: string; next?: { name: string; s: number } } | undefined;
 }
@@ -156,11 +156,11 @@ export function createMapView(container: HTMLElement, opts: { seed: number; mile
   const tint = new Color();
   const v = new Vector3(), ahead = new Vector3();
 
-  function frame(dt: number, _idleSpeed: number, progress: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }) {
+  function frame(dt: number, routeMeters: number, cones: readonly Cone[], autonomy: number, crash?: { id: number; kind: string }) {
     setCones(cones);
     setBlueLaneLines(autonomy >= 2);
     if (!index) { renderer.render(scene, camera); return; }
-    const target = opts.mile !== undefined ? opts.mile * 1609.344 : progress * index.total;
+    const target = Math.min(index.total, opts.mile !== undefined ? opts.mile * 1609.344 : routeMeters);
     const ci = chunkIndex(index, shownS ?? target);
     for (let i = ci - 1; i <= ci + 2; i++) want(i);
     for (const [i, e] of chunks) {
